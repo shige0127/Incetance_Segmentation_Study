@@ -1,0 +1,43 @@
+[tool.poetry]
+name = "mask-rcnn-demo"
+version = "0.1.0"
+description = "Mask R-CNN sample with compatible dependencies"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+
+# Core dependencies
+numpy = ">=1.21,<1.24"        # TensorFlow 2.15互換性のためupper boundを明記
+tensorflow = ">=2.13.0,<2.16.0"  # Python 3.11対応、TF 2.x API使用
+keras = "^2.11.0"
+
+# Scientific computing
+scipy = "^1.9.0"
+pandas = "^1.5.3"
+h5py = "^3.6.0"
+
+# Image processing
+pillow = "^9.0.0"
+opencv-python = "^4.5.5"
+scikit-image = "^0.21.0"
+imgaug = "^0.4.0"
+
+# Visualization
+matplotlib = "^3.5.0"
+
+# COCO dataset support
+pycocotools = "^2.0.10"
+
+# Build dependencies
+cython = "^0.29.34"
+
+# Jupyter support
+ipython = { extras = ["all"], version = "^8.0" }
+ipykernel = "^6.29.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
