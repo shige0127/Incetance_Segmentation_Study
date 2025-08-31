@@ -94,7 +94,7 @@ class ParallelModel(KM.Model):
                 # across it. If they don't, then the output is likely a loss
                 # or a metric value that gets averaged across the batch.
                 # Keras expects losses and metrics to be scalars.
-                if K.int_shape(outputs[0]) == ():
+                if len(tf.shape(outputs[0])) == 0:
                     # Average
                     m = KL.Lambda(lambda o: tf.add_n(o) / len(outputs), name=name)(outputs)
                 else:

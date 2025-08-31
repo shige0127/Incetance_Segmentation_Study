@@ -31,7 +31,7 @@ import os
 import sys
 import time
 import numpy as np
-import imgaug  # https://github.com/aleju/imgaug (pip3 install imgaug)
+import random  # https://github.com/aleju/imgaug (pip3 install imgaug)
 
 # Download and install the Python COCO tools from https://github.com/waleedka/coco
 # That's a fork from the original https://github.com/pdollar/coco with a bug
@@ -391,6 +391,23 @@ def evaluate_coco(model, dataset, coco, eval_type="bbox", limit=0, image_ids=Non
     print("Total time: ", time.time() - t_start)
 
 
+def simple_horizontal_flip(image, mask=None):
+    if random.random() > 0.5:
+        image = np.fliplr(image)
+        if mask is not None:
+            mask = np.fliplr(mask)
+    return image, mask
+
+class SimpleAugmentation:
+    def __call__(self, images, masks=None):
+        if masks is None:
+            return [simple_horizontal_flip(image)[0] for image in images]
+        else:
+            results = [simple_horizontal_flip(image, mask) for image, mask in zip(images, masks)]
+            flipped_images, flipped_masks = zip(*results)
+            return list(flipped_images), list(flipped_masks)
+
+
 ############################################################
 #  Training
 ############################################################
@@ -491,7 +508,7 @@ if __name__ == '__main__':
 
         # Image Augmentation
         # Right/Left flip 50% of the time
-        augmentation = imgaug.augmenters.Fliplr(0.5)
+        augmentation = SimpleAugmentation()
 
         # *** This training schedule is an example. Update to your needs ***
 
