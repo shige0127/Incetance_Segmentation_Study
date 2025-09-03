@@ -1,6 +1,6 @@
 """
 Mask R-CNN
-The main Mask R-CNN model implementation.
+メインのMask R-CNNモデル実装。
 
 Copyright (c) 2017 Matterport, Inc.
 Licensed under the MIT License (see LICENSE for details)
@@ -25,19 +25,19 @@ import keras.models as KM
 
 from mrcnn import utils
 
-# Requires TensorFlow 1.3+ and Keras 2.0.8+.
+# TensorFlow 1.3+ と Keras 2.0.8+ が必要
 from distutils.version import LooseVersion
 assert LooseVersion(tf.__version__) >= LooseVersion("1.3")
 assert LooseVersion(keras.__version__) >= LooseVersion('2.0.8')
 
 
 ############################################################
-#  Utility Functions
+#  ユーティリティ関数
 ############################################################
 
 def log(text, array=None):
-    """Prints a text message. And, optionally, if a Numpy array is provided it
-    prints it's shape, min, and max values.
+    """テキストメッセージを印刷します。オプションでNumpy配列が提供された場合、
+    その形状、最小値、最大値を印刷します。
     """
     if array is not None:
         text = text.ljust(25)
@@ -51,33 +51,33 @@ def log(text, array=None):
 
 
 class BatchNorm(KL.BatchNormalization):
-    """Extends the Keras BatchNormalization class to allow a central place
-    to make changes if needed.
+    """Keras BatchNormalizationクラスを拡張して、必要に応じて変更を
+    一元的に行えるようにします。
 
-    Batch normalization has a negative effect on training if batches are small
-    so this layer is often frozen (via setting in Config class) and functions
-    as linear layer.
+    バッチサイズが小さい場合、バッチ正規化は訓練に悪影響を与えるため、
+    このレイヤーはしばしば凍結され（Configクラスの設定で）、
+    線形レイヤーとして機能します。
     """
     def call(self, inputs, training=None):
         """
-        Note about training values:
-            None: Train BN layers. This is the normal mode
-            False: Freeze BN layers. Good when batch size is small
-            True: (don't use). Set layer in training mode even when making inferences
+        training値に関する注意：
+            None: BNレイヤーを訓練します。これは通常のモード
+            False: BNレイヤーを凍結します。バッチサイズが小さい場合に適している
+            True: （使用しない）推論時でもレイヤーを訓練モードに設定
         """
         return super(self.__class__, self).call(inputs, training=training)
 
 
 def compute_backbone_shapes(config, image_shape):
-    """Computes the width and height of each stage of the backbone network.
+    """バックボーンネットワークの各ステージの幅と高さを計算します。
 
     Returns:
-        [N, (height, width)]. Where N is the number of stages
+        [N, (height, width)]. Nはステージ数
     """
     if callable(config.BACKBONE):
         return config.COMPUTE_BACKBONE_SHAPE(image_shape)
 
-    # Currently supports ResNet only
+    # 現在はResNetのみサポート
     assert config.BACKBONE in ["resnet50", "resnet101"]
     return np.array(
         [[int(math.ceil(image_shape[0] / stride)),
@@ -86,23 +86,23 @@ def compute_backbone_shapes(config, image_shape):
 
 
 ############################################################
-#  Resnet Graph
+#  ResNet グラフ
 ############################################################
 
-# Code adopted from:
+# 以下からコードを採用:
 # https://github.com/fchollet/deep-learning-models/blob/master/resnet50.py
 
 def identity_block(input_tensor, kernel_size, filters, stage, block,
                    use_bias=True, train_bn=True):
-    """The identity_block is the block that has no conv layer at shortcut
-    # Arguments
-        input_tensor: input tensor
-        kernel_size: default 3, the kernel size of middle conv layer at main path
-        filters: list of integers, the nb_filters of 3 conv layer at main path
-        stage: integer, current stage label, used for generating layer names
-        block: 'a','b'..., current block label, used for generating layer names
-        use_bias: Boolean. To use or not use a bias in conv layers.
-        train_bn: Boolean. Train or freeze Batch Norm layers
+    """identity_blockはショートカットにconv層を持たないブロックです
+    # 引数
+        input_tensor: 入力テンソル
+        kernel_size: デフォルト3、メインパスの中間conv層のカーネルサイズ
+        filters: 整数のリスト、メインパスの3つのconv層のフィルタ数
+        stage: 整数、現在のステージラベル、レイヤー名生成に使用
+        block: 'a','b'..., 現在のブロックラベル、レイヤー名生成に使用
+        use_bias: Boolean。conv層でバイアスを使用するかどうか
+        train_bn: Boolean。Batch Norm層を訓練するか凍結するか
     """
     nb_filter1, nb_filter2, nb_filter3 = filters
     conv_name_base = 'res' + str(stage) + block + '_branch'
@@ -129,17 +129,17 @@ def identity_block(input_tensor, kernel_size, filters, stage, block,
 
 def conv_block(input_tensor, kernel_size, filters, stage, block,
                strides=(2, 2), use_bias=True, train_bn=True):
-    """conv_block is the block that has a conv layer at shortcut
-    # Arguments
-        input_tensor: input tensor
-        kernel_size: default 3, the kernel size of middle conv layer at main path
-        filters: list of integers, the nb_filters of 3 conv layer at main path
-        stage: integer, current stage label, used for generating layer names
-        block: 'a','b'..., current block label, used for generating layer names
-        use_bias: Boolean. To use or not use a bias in conv layers.
-        train_bn: Boolean. Train or freeze Batch Norm layers
-    Note that from stage 3, the first conv layer at main path is with subsample=(2,2)
-    And the shortcut should have subsample=(2,2) as well
+    """conv_blockはショートカットにconv層を持つブロックです
+    # 引数
+        input_tensor: 入力テンソル
+        kernel_size: デフォルト3、メインパスの中間conv層のカーネルサイズ
+        filters: 整数のリスト、メインパスの3つのconv層のフィルタ数
+        stage: 整数、現在のステージラベル、レイヤー名生成に使用
+        block: 'a','b'..., 現在のブロックラベル、レイヤー名生成に使用
+        use_bias: Boolean。conv層でバイアスを使用するかどうか
+        train_bn: Boolean。Batch Norm層を訓練するか凍結するか
+    注意：stage 3以降、メインパスの最初のconv層はsubsample=(2,2)になります
+    そしてショートカットもsubsample=(2,2)である必要があります
     """
     nb_filter1, nb_filter2, nb_filter3 = filters
     conv_name_base = 'res' + str(stage) + block + '_branch'
@@ -169,34 +169,34 @@ def conv_block(input_tensor, kernel_size, filters, stage, block,
 
 
 def resnet_graph(input_image, architecture, stage5=False, train_bn=True):
-    """Build a ResNet graph.
-        architecture: Can be resnet50 or resnet101
-        stage5: Boolean. If False, stage5 of the network is not created
-        train_bn: Boolean. Train or freeze Batch Norm layers
+    """ResNetグラフを構築します。
+        architecture: resnet50またはresnet101を指定可能
+        stage5: Boolean。Falseの場合、ネットワークのstage5は作成されません
+        train_bn: Boolean。Batch Norm層を訓練するか凍結するか
     """
     assert architecture in ["resnet50", "resnet101"]
-    # Stage 1
+    # ステージ 1
     x = KL.ZeroPadding2D((3, 3))(input_image)
     x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x)
     x = BatchNorm(name='bn_conv1')(x, training=train_bn)
     x = KL.Activation('relu')(x)
     C1 = x = KL.MaxPooling2D((3, 3), strides=(2, 2), padding="same")(x)
-    # Stage 2
+    # ステージ 2
     x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), train_bn=train_bn)
     x = identity_block(x, 3, [64, 64, 256], stage=2, block='b', train_bn=train_bn)
     C2 = x = identity_block(x, 3, [64, 64, 256], stage=2, block='c', train_bn=train_bn)
-    # Stage 3
+    # ステージ 3
     x = conv_block(x, 3, [128, 128, 512], stage=3, block='a', train_bn=train_bn)
     x = identity_block(x, 3, [128, 128, 512], stage=3, block='b', train_bn=train_bn)
     x = identity_block(x, 3, [128, 128, 512], stage=3, block='c', train_bn=train_bn)
     C3 = x = identity_block(x, 3, [128, 128, 512], stage=3, block='d', train_bn=train_bn)
-    # Stage 4
+    # ステージ 4
     x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a', train_bn=train_bn)
     block_count = {"resnet50": 5, "resnet101": 22}[architecture]
     for i in range(block_count):
         x = identity_block(x, 3, [256, 256, 1024], stage=4, block=chr(98 + i), train_bn=train_bn)
     C4 = x
-    # Stage 5
+    # ステージ 5
     if stage5:
         x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a', train_bn=train_bn)
         x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b', train_bn=train_bn)
@@ -211,21 +211,21 @@ def resnet_graph(input_image, architecture, stage5=False, train_bn=True):
 ############################################################
 
 def apply_box_deltas_graph(boxes, deltas):
-    """Applies the given deltas to the given boxes.
-    boxes: [N, (y1, x1, y2, x2)] boxes to update
-    deltas: [N, (dy, dx, log(dh), log(dw))] refinements to apply
+    """与えられたデルタを与えられたボックスに適用します。
+    boxes: [N, (y1, x1, y2, x2)] 更新するボックス
+    deltas: [N, (dy, dx, log(dh), log(dw))] 適用する調整値
     """
-    # Convert to y, x, h, w
+    # y, x, h, w に変換
     height = boxes[:, 2] - boxes[:, 0]
     width = boxes[:, 3] - boxes[:, 1]
     center_y = boxes[:, 0] + 0.5 * height
     center_x = boxes[:, 1] + 0.5 * width
-    # Apply deltas
+    # デルタを適用
     center_y += deltas[:, 0] * height
     center_x += deltas[:, 1] * width
     height *= tf.math.exp(deltas[:, 2])
     width *= tf.math.exp(deltas[:, 3])
-    # Convert back to y1, x1, y2, x2
+    # y1, x1, y2, x2 に逆変換
     y1 = center_y - 0.5 * height
     x1 = center_x - 0.5 * width
     y2 = y1 + height
@@ -237,12 +237,12 @@ def apply_box_deltas_graph(boxes, deltas):
 def clip_boxes_graph(boxes, window):
     """
     boxes: [N, (y1, x1, y2, x2)]
-    window: [4] in the form y1, x1, y2, x2
+    window: [4] y1, x1, y2, x2の形式
     """
-    # Split
+    # 分割
     wy1, wx1, wy2, wx2 = tf.split(window, 4)
     y1, x1, y2, x2 = tf.split(boxes, 4, axis=1)
-    # Clip
+    # クリップ
     y1 = tf.maximum(tf.minimum(y1, wy2), wy1)
     x1 = tf.maximum(tf.minimum(x1, wx2), wx1)
     y2 = tf.maximum(tf.minimum(y2, wy2), wy1)
@@ -253,18 +253,17 @@ def clip_boxes_graph(boxes, window):
 
 
 class ProposalLayer(KE.Layer):
-    """Receives anchor scores and selects a subset to pass as proposals
-    to the second stage. Filtering is done based on anchor scores and
-    non-max suppression to remove overlaps. It also applies bounding
-    box refinement deltas to anchors.
+    """アンカースコアを受け取り、第2段階に提案として渡すサブセットを選択します。
+    フィルタリングはアンカースコアと重複を除去するnon-max suppressionに基づいて行われます。
+    また、アンカーにバウンディングボックス調整デルタを適用します。
 
     Inputs:
         rpn_probs: [batch, num_anchors, (bg prob, fg prob)]
         rpn_bbox: [batch, num_anchors, (dy, dx, log(dh), log(dw))]
-        anchors: [batch, num_anchors, (y1, x1, y2, x2)] anchors in normalized coordinates
+        anchors: [batch, num_anchors, (y1, x1, y2, x2)] 正規化座標のアンカー
 
     Returns:
-        Proposals in normalized coordinates [batch, rois, (y1, x1, y2, x2)]
+        正規化座標の提案 [batch, rois, (y1, x1, y2, x2)]
     """
 
     def __init__(self, proposal_count, nms_threshold, config=None, **kwargs):
@@ -274,16 +273,16 @@ class ProposalLayer(KE.Layer):
         self.nms_threshold = nms_threshold
 
     def call(self, inputs):
-        # Box Scores. Use the foreground class confidence. [Batch, num_rois, 1]
+        # ボックススコア。前景クラス信頼度を使用。[Batch, num_rois, 1]
         scores = inputs[0][:, :, 1]
-        # Box deltas [batch, num_rois, 4]
+        # ボックスデルタ [batch, num_rois, 4]
         deltas = inputs[1]
         deltas = deltas * np.reshape(self.config.RPN_BBOX_STD_DEV, [1, 1, 4])
-        # Anchors
+        # アンカー
         anchors = inputs[2]
 
-        # Improve performance by trimming to top anchors by score
-        # and doing the rest on the smaller subset.
+        # スコア順に上位アンカーに絞ってパフォーマンスを向上させ
+        # より小さなサブセットで残りの処理を行う。
         pre_nms_limit = tf.minimum(self.config.PRE_NMS_LIMIT, tf.shape(anchors)[1])
         ix = tf.nn.top_k(scores, pre_nms_limit, sorted=True,
                          name="top_anchors").indices
@@ -295,32 +294,32 @@ class ProposalLayer(KE.Layer):
                                     self.config.IMAGES_PER_GPU,
                                     names=["pre_nms_anchors"])
 
-        # Apply deltas to anchors to get refined anchors.
+        # デルタをアンカーに適用して精密化されたアンカーを取得。
         # [batch, N, (y1, x1, y2, x2)]
         boxes = utils.batch_slice([pre_nms_anchors, deltas],
                                   lambda x, y: apply_box_deltas_graph(x, y),
                                   self.config.IMAGES_PER_GPU,
                                   names=["refined_anchors"])
 
-        # Clip to image boundaries. Since we're in normalized coordinates,
-        # clip to 0..1 range. [batch, N, (y1, x1, y2, x2)]
+        # 画像境界にクリップ。正規化座標のため、0..1の範囲にクリップ。
+        # [batch, N, (y1, x1, y2, x2)]
         window = np.array([0, 0, 1, 1], dtype=np.float32)
         boxes = utils.batch_slice(boxes,
                                   lambda x: clip_boxes_graph(x, window),
                                   self.config.IMAGES_PER_GPU,
                                   names=["refined_anchors_clipped"])
 
-        # Filter out small boxes
-        # According to Xinlei Chen's paper, this reduces detection accuracy
-        # for small objects, so we're skipping it.
+        # 小さなボックスをフィルタリング
+        # Xinlei Chenの論文によると、これは小さなオブジェクトの検出精度を
+        # 低下させるため、スキップする。
 
-        # Non-max suppression
+        # 非最大抑制
         def nms(boxes, scores):
             indices = tf.image.non_max_suppression(
                 boxes, scores, self.proposal_count,
                 self.nms_threshold, name="rpn_non_max_suppression")
             proposals = tf.gather(boxes, indices)
-            # Pad if needed
+            # 必要に応じてパディング
             padding = tf.maximum(self.proposal_count - tf.shape(proposals)[0], 0)
             proposals = tf.pad(proposals, [(0, padding), (0, 0)])
             return proposals
@@ -333,32 +332,30 @@ class ProposalLayer(KE.Layer):
 
 
 ############################################################
-#  ROIAlign Layer
+#  ROIAlign層
 ############################################################
 
 def log2_graph(x):
-    """Implementation of Log2. TF doesn't have a native implementation."""
+    """Log2の実装。TensorFlowにはネイティブ実装がない。"""
     return tf.math.log(x) / tf.math.log(2.0)
 
 
 class PyramidROIAlign(KE.Layer):
-    """Implements ROI Pooling on multiple levels of the feature pyramid.
+    """特徴ピラミッドの複数レベルでROI Poolingを実装する。
 
-    Params:
-    - pool_shape: [pool_height, pool_width] of the output pooled regions. Usually [7, 7]
+    パラメータ:
+    - pool_shape: 出力プール領域の[pool_height, pool_width]。通常[7, 7]
 
-    Inputs:
-    - boxes: [batch, num_boxes, (y1, x1, y2, x2)] in normalized
-             coordinates. Possibly padded with zeros if not enough
-             boxes to fill the array.
-    - image_meta: [batch, (meta data)] Image details. See compose_image_meta()
-    - feature_maps: List of feature maps from different levels of the pyramid.
-                    Each is [batch, height, width, channels]
+    入力:
+    - boxes: [batch, num_boxes, (y1, x1, y2, x2)] 正規化座標。
+             配列を埋めるのに十分なボックスがない場合はゼロでパディングされることがある。
+    - image_meta: [batch, (メタデータ)] 画像の詳細。compose_image_meta()を参照
+    - feature_maps: ピラミッドの異なるレベルからの特徴マップのリスト。
+                    各々は[batch, height, width, channels]
 
-    Output:
-    Pooled regions in the shape: [batch, num_boxes, pool_height, pool_width, channels].
-    The width and height are those specific in the pool_shape in the layer
-    constructor.
+    出力:
+    [batch, num_boxes, pool_height, pool_width, channels]形状のプール領域。
+    幅と高さはレイヤーコンストラクタのpool_shapeで指定されたもの。
     """
 
     def __init__(self, pool_shape, **kwargs):
@@ -366,82 +363,81 @@ class PyramidROIAlign(KE.Layer):
         self.pool_shape = tuple(pool_shape)
 
     def call(self, inputs):
-        # Crop boxes [batch, num_boxes, (y1, x1, y2, x2)] in normalized coords
+        # 正規化座標でのボックスをクロップ [batch, num_boxes, (y1, x1, y2, x2)]
         boxes = inputs[0]
 
-        # Image meta
-        # Holds details about the image. See compose_image_meta()
+        # 画像メタデータ
+        # 画像の詳細情報を保持。compose_image_meta()を参照
         image_meta = inputs[1]
 
-        # Feature Maps. List of feature maps from different level of the
-        # feature pyramid. Each is [batch, height, width, channels]
+        # 特徴マップ。特徴ピラミッドの異なるレベルからの特徴マップのリスト。
+        # 各々は[batch, height, width, channels]
         feature_maps = inputs[2:]
 
-        # Assign each ROI to a level in the pyramid based on the ROI area.
+        # ROIの面積に基づいて各ROIをピラミッドのレベルに割り当てる。
         y1, x1, y2, x2 = tf.split(boxes, 4, axis=2)
         h = y2 - y1
         w = x2 - x1
-        # Use shape of first image. Images in a batch must have the same size.
+        # 最初の画像の形状を使用。バッチ内の画像は同じサイズである必要がある。
         image_shape = parse_image_meta_graph(image_meta)['image_shape'][0]
-        # Equation 1 in the Feature Pyramid Networks paper. Account for
-        # the fact that our coordinates are normalized here.
-        # e.g. a 224x224 ROI (in pixels) maps to P4
+        # Feature Pyramid Networks論文の式1。ここでは座標が正規化されている
+        # ことを考慮。例: 224x224 ROI（ピクセル）はP4にマップされる
         image_area = tf.cast(image_shape[0] * image_shape[1], tf.float32)
         roi_level = log2_graph(tf.sqrt(h * w) / (224.0 / tf.sqrt(image_area)))
         roi_level = tf.minimum(5, tf.maximum(
             2, 4 + tf.cast(tf.round(roi_level), tf.int32)))
         roi_level = tf.squeeze(roi_level, 2)
 
-        # Loop through levels and apply ROI pooling to each. P2 to P5.
+        # レベルをループして各々にROI poolingを適用。P2からP5まで。
         pooled = []
         box_to_level = []
         for i, level in enumerate(range(2, 6)):
             ix = tf.where(tf.equal(roi_level, level))
             level_boxes = tf.gather_nd(boxes, ix)
 
-            # Box indices for crop_and_resize.
+            # crop_and_resize用のボックスインデックス。
             box_indices = tf.cast(ix[:, 0], tf.int32)
 
-            # Keep track of which box is mapped to which level
+            # どのボックスがどのレベルにマップされるかを追跡
             box_to_level.append(ix)
 
-            # Stop gradient propogation to ROI proposals
+            # ROI提案への勾配伝播を停止
             level_boxes = tf.stop_gradient(level_boxes)
             box_indices = tf.stop_gradient(box_indices)
 
-            # Crop and Resize
-            # From Mask R-CNN paper: "We sample four regular locations, so
-            # that we can evaluate either max or average pooling. In fact,
-            # interpolating only a single value at each bin center (without
-            # pooling) is nearly as effective."
+            # クロップおよびリサイズ
+            # Mask R-CNN論文より: 「4つの正規位置をサンプルして、
+            # max poolingまたはaverage poolingのいずれかを評価できるようにする。
+            # 実際、各ビンの中心で単一の値を補間するだけでも
+            # （poolingなしで）ほぼ同等に効果的である。」
             #
-            # Here we use the simplified approach of a single value per bin,
-            # which is how it's done in tf.crop_and_resize()
-            # Result: [batch * num_boxes, pool_height, pool_width, channels]
+            # ここではビン当たり単一値の簡化されたアプローチを使用。
+            # これはtf.crop_and_resize()で行われる方法。
+            # 結果: [batch * num_boxes, pool_height, pool_width, channels]
             pooled.append(tf.image.crop_and_resize(
                 feature_maps[i], level_boxes, box_indices, self.pool_shape,
                 method="bilinear"))
 
-        # Pack pooled features into one tensor
+        # プールされた特徴を1つのテンソルにパック
         pooled = tf.concat(pooled, axis=0)
 
-        # Pack box_to_level mapping into one array and add another
-        # column representing the order of pooled boxes
+        # box_to_levelマッピングを1つの配列にパックし、
+        # プールされたボックスの順序を表す列を追加
         box_to_level = tf.concat(box_to_level, axis=0)
         box_range = tf.expand_dims(tf.range(tf.shape(box_to_level)[0]), 1)
         box_to_level = tf.concat([tf.cast(box_to_level, tf.int32), box_range],
                                  axis=1)
 
-        # Rearrange pooled features to match the order of the original boxes
-        # Sort box_to_level by batch then box index
-        # TF doesn't have a way to sort by two columns, so merge them and sort.
+        # 元のボックスの順序に合わせてプールされた特徴を再配置
+        # box_to_levelをバッチ、次にボックスインデックスでソート
+        # TFには2列でソートする方法がないため、マージしてソート。
         sorting_tensor = box_to_level[:, 0] * 100000 + box_to_level[:, 1]
         ix = tf.nn.top_k(sorting_tensor, k=tf.shape(
             box_to_level)[0]).indices[::-1]
         ix = tf.gather(box_to_level[:, 2], ix)
         pooled = tf.gather(pooled, ix)
 
-        # Re-add the batch dimension
+        # バッチ次元を再追加
         shape = tf.concat([tf.shape(boxes)[:2], tf.shape(pooled)[1:]], axis=0)
         pooled = tf.reshape(pooled, shape)
         return pooled
@@ -451,21 +447,21 @@ class PyramidROIAlign(KE.Layer):
 
 
 ############################################################
-#  Detection Target Layer
+#  検出ターゲット層
 ############################################################
 
 def overlaps_graph(boxes1, boxes2):
-    """Computes IoU overlaps between two sets of boxes.
-    boxes1, boxes2: [N, (y1, x1, y2, x2)].
+    """二つのボックスセット間のIoU重なりを計算する。
+    boxes1, boxes2: [N, (y1, x1, y2, x2)]。
     """
-    # 1. Tile boxes2 and repeat boxes1. This allows us to compare
-    # every boxes1 against every boxes2 without loops.
-    # TF doesn't have an equivalent to np.repeat() so simulate it
-    # using tf.tile() and tf.reshape.
+    # 1. boxes2をタイル化しboxes1を繰り返す。これにより比較可能
+    # ループなしで全てのboxes1を全てのboxes2に対して比較。
+    # TFにnp.repeat()の相当品がないためシミュレート
+    # tf.tile()とtf.reshape()を使用。
     b1 = tf.reshape(tf.tile(tf.expand_dims(boxes1, 1),
                             [1, 1, tf.shape(boxes2)[0]]), [-1, 4])
     b2 = tf.tile(boxes2, [tf.shape(boxes1)[0], 1])
-    # 2. Compute intersections
+    # 2. 交差を計算
     b1_y1, b1_x1, b1_y2, b1_x2 = tf.split(b1, 4, axis=1)
     b2_y1, b2_x1, b2_y2, b2_x2 = tf.split(b2, 4, axis=1)
     y1 = tf.maximum(b1_y1, b2_y1)
@@ -473,38 +469,38 @@ def overlaps_graph(boxes1, boxes2):
     y2 = tf.minimum(b1_y2, b2_y2)
     x2 = tf.minimum(b1_x2, b2_x2)
     intersection = tf.maximum(x2 - x1, 0) * tf.maximum(y2 - y1, 0)
-    # 3. Compute unions
+    # 3. 合併を計算
     b1_area = (b1_y2 - b1_y1) * (b1_x2 - b1_x1)
     b2_area = (b2_y2 - b2_y1) * (b2_x2 - b2_x1)
     union = b1_area + b2_area - intersection
-    # 4. Compute IoU and reshape to [boxes1, boxes2]
+    # 4. IoUを計算して[boxes1, boxes2]に再整形
     iou = intersection / union
     overlaps = tf.reshape(iou, [tf.shape(boxes1)[0], tf.shape(boxes2)[0]])
     return overlaps
 
 
 def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config):
-    """Generates detection targets for one image. Subsamples proposals and
-    generates target class IDs, bounding box deltas, and masks for each.
+    """一枚の画像に対する検出ターゲットを生成する。提案をサブサンプルし、
+    各々のターゲットクラスID、バウンディングボックスデルタ、マスクを生成する。
 
     Inputs:
-    proposals: [POST_NMS_ROIS_TRAINING, (y1, x1, y2, x2)] in normalized coordinates. Might
-               be zero padded if there are not enough proposals.
-    gt_class_ids: [MAX_GT_INSTANCES] int class IDs
-    gt_boxes: [MAX_GT_INSTANCES, (y1, x1, y2, x2)] in normalized coordinates.
-    gt_masks: [height, width, MAX_GT_INSTANCES] of boolean type.
+    proposals: [POST_NMS_ROIS_TRAINING, (y1, x1, y2, x2)] 正規化座標。提案が不足している場合は
+               ゼロパディングされることがある。
+    gt_class_ids: [MAX_GT_INSTANCES] 整数型クラスID
+    gt_boxes: [MAX_GT_INSTANCES, (y1, x1, y2, x2)] 正規化座標。
+    gt_masks: [height, width, MAX_GT_INSTANCES] ブール型。
 
-    Returns: Target ROIs and corresponding class IDs, bounding box shifts,
-    and masks.
-    rois: [TRAIN_ROIS_PER_IMAGE, (y1, x1, y2, x2)] in normalized coordinates
-    class_ids: [TRAIN_ROIS_PER_IMAGE]. Integer class IDs. Zero padded.
+    Returns: ターゲットROIと対応するクラスID、バウンディングボックスシフト、
+    およびマスク。
+    rois: [TRAIN_ROIS_PER_IMAGE, (y1, x1, y2, x2)] 正規化座標
+    class_ids: [TRAIN_ROIS_PER_IMAGE]。整数型クラスID。ゼロパディング。
     deltas: [TRAIN_ROIS_PER_IMAGE, (dy, dx, log(dh), log(dw))]
-    masks: [TRAIN_ROIS_PER_IMAGE, height, width]. Masks cropped to bbox
-           boundaries and resized to neural network output size.
+    masks: [TRAIN_ROIS_PER_IMAGE, height, width]。bbox境界にクロップされ、
+           ニューラルネットワーク出力サイズにリサイズされたマスク。
 
-    Note: Returned arrays might be zero padded if not enough target ROIs.
+    注意：ターゲットROIが不足している場合、返される配列はゼロパディングされることがある。
     """
-    # Assertions
+    # アサーション
     asserts = [
         tf.Assert(tf.greater(tf.shape(proposals)[0], 0), [proposals],
                   name="roi_assertion"),
@@ -512,7 +508,7 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
     with tf.control_dependencies(asserts):
         proposals = tf.identity(proposals)
 
-    # Remove zero padding
+    # ゼロパディングを削除
     proposals, _ = trim_zeros_graph(proposals, name="trim_proposals")
     gt_boxes, non_zeros = trim_zeros_graph(gt_boxes, name="trim_gt_boxes")
     gt_class_ids = tf.boolean_mask(gt_class_ids, non_zeros,
@@ -520,9 +516,9 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
     gt_masks = tf.gather(gt_masks, tf.where(non_zeros)[:, 0], axis=2,
                          name="trim_gt_masks")
 
-    # Handle COCO crowds
-    # A crowd box in COCO is a bounding box around several instances. Exclude
-    # them from training. A crowd box is given a negative class ID.
+    # COCOの群衆を処理
+    # COCOの群衆ボックスは複数のインスタンスを囲むバウンディングボックス。
+    # 訓練から除外する。群衆ボックスには負のクラスIDが付与される。
     crowd_ix = tf.where(gt_class_ids < 0)[:, 0]
     non_crowd_ix = tf.where(gt_class_ids > 0)[:, 0]
     crowd_boxes = tf.gather(gt_boxes, crowd_ix)
@@ -530,37 +526,37 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
     gt_boxes = tf.gather(gt_boxes, non_crowd_ix)
     gt_masks = tf.gather(gt_masks, non_crowd_ix, axis=2)
 
-    # Compute overlaps matrix [proposals, gt_boxes]
+    # 重なり行列を計算 [proposals, gt_boxes]
     overlaps = overlaps_graph(proposals, gt_boxes)
 
-    # Compute overlaps with crowd boxes [proposals, crowd_boxes]
+    # 群衆ボックスとの重なりを計算 [proposals, crowd_boxes]
     crowd_overlaps = overlaps_graph(proposals, crowd_boxes)
     crowd_iou_max = tf.reduce_max(crowd_overlaps, axis=1)
     no_crowd_bool = (crowd_iou_max < 0.001)
 
-    # Determine positive and negative ROIs
+    # ポジティブおよびネガティブROIを決定
     roi_iou_max = tf.reduce_max(overlaps, axis=1)
-    # 1. Positive ROIs are those with >= 0.5 IoU with a GT box
+    # 1. ポジティブROIはGTボックスとのIoU >= 0.5のもの
     positive_roi_bool = (roi_iou_max >= 0.5)
     positive_indices = tf.where(positive_roi_bool)[:, 0]
-    # 2. Negative ROIs are those with < 0.5 with every GT box. Skip crowds.
+    # 2. ネガティブROIは全てのGTボックスとのIoU < 0.5のもの。群衆をスキップ。
     negative_indices = tf.where(tf.logical_and(roi_iou_max < 0.5, no_crowd_bool))[:, 0]
 
-    # Subsample ROIs. Aim for 33% positive
-    # Positive ROIs
+    # ROIをサブサンプル。ポジティブ33%を目指す
+    # ポジティブROI
     positive_count = int(config.TRAIN_ROIS_PER_IMAGE *
                          config.ROI_POSITIVE_RATIO)
     positive_indices = tf.random_shuffle(positive_indices)[:positive_count]
     positive_count = tf.shape(positive_indices)[0]
-    # Negative ROIs. Add enough to maintain positive:negative ratio.
+    # ネガティブROI。ポジティブ:ネガティブの比率を維持するのに十分な数を追加。
     r = 1.0 / config.ROI_POSITIVE_RATIO
     negative_count = tf.cast(r * tf.cast(positive_count, tf.float32), tf.int32) - positive_count
     negative_indices = tf.random_shuffle(negative_indices)[:negative_count]
-    # Gather selected ROIs
+    # 選択されたROIを収集
     positive_rois = tf.gather(proposals, positive_indices)
     negative_rois = tf.gather(proposals, negative_indices)
 
-    # Assign positive ROIs to GT boxes.
+    # ポジティブROIをGTボックスに割り当てる。
     positive_overlaps = tf.gather(overlaps, positive_indices)
     roi_gt_box_assignment = tf.cond(
         tf.greater(tf.shape(positive_overlaps)[1], 0),
@@ -570,21 +566,21 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
     roi_gt_boxes = tf.gather(gt_boxes, roi_gt_box_assignment)
     roi_gt_class_ids = tf.gather(gt_class_ids, roi_gt_box_assignment)
 
-    # Compute bbox refinement for positive ROIs
+    # ポジティブROIのbbox精密化を計算
     deltas = utils.box_refinement_graph(positive_rois, roi_gt_boxes)
     deltas /= config.BBOX_STD_DEV
 
-    # Assign positive ROIs to GT masks
-    # Permute masks to [N, height, width, 1]
+    # ポジティブROIをGTマスクに割り当て
+    # マスクを[N, height, width, 1]に並べ替え
     transposed_masks = tf.expand_dims(tf.transpose(gt_masks, [2, 0, 1]), -1)
-    # Pick the right mask for each ROI
+    # 各ROIに対して正しいマスクを選択
     roi_masks = tf.gather(transposed_masks, roi_gt_box_assignment)
 
-    # Compute mask targets
+    # マスクターゲットを計算
     boxes = positive_rois
     if config.USE_MINI_MASK:
-        # Transform ROI coordinates from normalized image space
-        # to normalized mini-mask space.
+        # ROI座標を正規化画像空間から変換
+        # 正規化されたミニマスク空間へ。
         y1, x1, y2, x2 = tf.split(positive_rois, 4, axis=1)
         gt_y1, gt_x1, gt_y2, gt_x2 = tf.split(roi_gt_boxes, 4, axis=1)
         gt_h = gt_y2 - gt_y1
@@ -598,15 +594,15 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
     masks = tf.image.crop_and_resize(tf.cast(roi_masks, tf.float32), boxes,
                                      box_ids,
                                      config.MASK_SHAPE)
-    # Remove the extra dimension from masks.
+    # マスクから余分な次元を削除。
     masks = tf.squeeze(masks, axis=3)
 
-    # Threshold mask pixels at 0.5 to have GT masks be 0 or 1 to use with
-    # binary cross entropy loss.
+    # バイナリクロスエントロピー损失で使用するため、
+    # GTマスクを0または1にするためマスクピクセルを0.5で闾値処理。
     masks = tf.round(masks)
 
-    # Append negative ROIs and pad bbox deltas and masks that
-    # are not used for negative ROIs with zeros.
+    # ネガティブROIを追加し、ネガティブROIに使用されない
+    # bboxデルタとマスクをゼロでパディング。
     rois = tf.concat([positive_rois, negative_rois], axis=0)
     N = tf.shape(negative_rois)[0]
     P = tf.maximum(config.TRAIN_ROIS_PER_IMAGE - tf.shape(rois)[0], 0)
@@ -620,28 +616,26 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
 
 
 class DetectionTargetLayer(KE.Layer):
-    """Subsamples proposals and generates target box refinement, class_ids,
-    and masks for each.
+    """提案をサブサンプルし、各々に対してターゲットボックス精密化、class_ids、
+    およびマスクを生成する。
 
-    Inputs:
-    proposals: [batch, N, (y1, x1, y2, x2)] in normalized coordinates. Might
-               be zero padded if there are not enough proposals.
-    gt_class_ids: [batch, MAX_GT_INSTANCES] Integer class IDs.
-    gt_boxes: [batch, MAX_GT_INSTANCES, (y1, x1, y2, x2)] in normalized
-              coordinates.
-    gt_masks: [batch, height, width, MAX_GT_INSTANCES] of boolean type
+    入力:
+    proposals: [batch, N, (y1, x1, y2, x2)] 正規化座標。提案が不足している場合は
+               ゼロパディングされることがある。
+    gt_class_ids: [batch, MAX_GT_INSTANCES] 整数型クラスID。
+    gt_boxes: [batch, MAX_GT_INSTANCES, (y1, x1, y2, x2)] 正規化座標。
+    gt_masks: [batch, height, width, MAX_GT_INSTANCES] ブール型
 
-    Returns: Target ROIs and corresponding class IDs, bounding box shifts,
-    and masks.
-    rois: [batch, TRAIN_ROIS_PER_IMAGE, (y1, x1, y2, x2)] in normalized
-          coordinates
-    target_class_ids: [batch, TRAIN_ROIS_PER_IMAGE]. Integer class IDs.
+    返し値: ターゲットROIと対応するクラスID、バウンディングボックスシフト、
+    およびマスク。
+    rois: [batch, TRAIN_ROIS_PER_IMAGE, (y1, x1, y2, x2)] 正規化座標
+    target_class_ids: [batch, TRAIN_ROIS_PER_IMAGE]。整数型クラスID。
     target_deltas: [batch, TRAIN_ROIS_PER_IMAGE, (dy, dx, log(dh), log(dw)]
     target_mask: [batch, TRAIN_ROIS_PER_IMAGE, height, width]
-                 Masks cropped to bbox boundaries and resized to neural
-                 network output size.
+                 bbox境界にクロップされ、ニューラルネットワーク出力サイズに
+                 リサイズされたマスク。
 
-    Note: Returned arrays might be zero padded if not enough target ROIs.
+    注意: ターゲットROIが不足している場合、返される配列はゼロパディングされることがある。
     """
 
     def __init__(self, config, **kwargs):
@@ -654,8 +648,8 @@ class DetectionTargetLayer(KE.Layer):
         gt_boxes = inputs[2]
         gt_masks = inputs[3]
 
-        # Slice the batch and run a graph for each slice
-        # TODO: Rename target_bbox to target_deltas for clarity
+        # バッチをスライスし、各スライスに対してグラフを実行
+        # TODO: 明確化のためtarget_bboxをtarget_deltasにリネーム
         names = ["rois", "target_class_ids", "target_bbox", "target_mask"]
         outputs = utils.batch_slice(
             [proposals, gt_class_ids, gt_boxes, gt_masks],
@@ -678,114 +672,112 @@ class DetectionTargetLayer(KE.Layer):
 
 
 ############################################################
-#  Detection Layer
+#  検出層
 ############################################################
 
 def refine_detections_graph(rois, probs, deltas, window, config):
-    """Refine classified proposals and filter overlaps and return final
-    detections.
+    """分類された提案を精密化し、重なりをフィルタリングして最終検出結果を返す。
 
-    Inputs:
-        rois: [N, (y1, x1, y2, x2)] in normalized coordinates
-        probs: [N, num_classes]. Class probabilities.
-        deltas: [N, num_classes, (dy, dx, log(dh), log(dw))]. Class-specific
-                bounding box deltas.
-        window: (y1, x1, y2, x2) in normalized coordinates. The part of the image
-            that contains the image excluding the padding.
+    入力:
+        rois: [N, (y1, x1, y2, x2)] 正規化座標
+        probs: [N, num_classes]。クラス確率。
+        deltas: [N, num_classes, (dy, dx, log(dh), log(dw))]。クラス固有の
+                バウンディングボックスデルタ。
+        window: (y1, x1, y2, x2) 正規化座標。パディングを除いた画像を含む
+            画像の部分。
 
-    Returns detections shaped: [num_detections, (y1, x1, y2, x2, class_id, score)] where
-        coordinates are normalized.
+    返し値の形状: [num_detections, (y1, x1, y2, x2, class_id, score)]、座標は正規化。
     """
-    # Class IDs per ROI
+    # ROIごとのクラスID
     class_ids = tf.argmax(probs, axis=1, output_type=tf.int32)
-    # Class probability of the top class of each ROI
+    # 各ROIのトップクラスのクラス確率
     indices = tf.stack([tf.range(tf.shape(probs)[0]), class_ids], axis=1)
     class_scores = tf.gather_nd(probs, indices)
-    # Class-specific bounding box deltas
+    # クラス固有のバウンディングボックスデルタ
     deltas_specific = tf.gather_nd(deltas, indices)
-    # Apply bounding box deltas
-    # Shape: [boxes, (y1, x1, y2, x2)] in normalized coordinates
+    # バウンディングボックスデルタを適用
+    # 形状: [boxes, (y1, x1, y2, x2)] 正規化座標
     refined_rois = apply_box_deltas_graph(
         rois, deltas_specific * config.BBOX_STD_DEV)
-    # Clip boxes to image window
+    # ボックスを画像ウィンドウにクリップ
     refined_rois = clip_boxes_graph(refined_rois, window)
 
-    # TODO: Filter out boxes with zero area
+    # TODO: 面積ゼロのボックスをフィルタリング
 
-    # Filter out background boxes
+    # 背景ボックスをフィルタリング
     keep = tf.where(class_ids > 0)[:, 0]
-    # Filter out low confidence boxes
+    # 低信頼度ボックスをフィルタリング
     if config.DETECTION_MIN_CONFIDENCE:
         conf_keep = tf.where(class_scores >= config.DETECTION_MIN_CONFIDENCE)[:, 0]
         keep = tf.sets.intersection(tf.expand_dims(keep, 0),
                                     tf.expand_dims(conf_keep, 0))
         keep = tf.sparse.to_dense(keep)[0]
 
-    # Apply per-class NMS
-    # 1. Prepare variables
+    # クラスごとのNMSを適用
+    # 1. 変数を準備
     pre_nms_class_ids = tf.gather(class_ids, keep)
     pre_nms_scores = tf.gather(class_scores, keep)
     pre_nms_rois = tf.gather(refined_rois,   keep)
     unique_pre_nms_class_ids = tf.unique(pre_nms_class_ids)[0]
 
     def nms_keep_map(class_id):
-        """Apply Non-Maximum Suppression on ROIs of the given class."""
-        # Indices of ROIs of the given class
+        """指定されたクラスのROIに非最大抑制を適用する。"""
+        # 指定されたクラスのROIのインデックス
         ixs = tf.where(tf.equal(pre_nms_class_ids, class_id))[:, 0]
-        # Apply NMS
+        # NMSを適用
         class_keep = tf.image.non_max_suppression(
                 tf.gather(pre_nms_rois, ixs),
                 tf.gather(pre_nms_scores, ixs),
                 max_output_size=config.DETECTION_MAX_INSTANCES,
                 iou_threshold=config.DETECTION_NMS_THRESHOLD)
-        # Map indices
+        # インデックスをマップ
         class_keep = tf.gather(keep, tf.gather(ixs, class_keep))
-        # Pad with -1 so returned tensors have the same shape
+        # 返されるテンソルが同じ形状になるように-1でパディング
         gap = config.DETECTION_MAX_INSTANCES - tf.shape(class_keep)[0]
         class_keep = tf.pad(class_keep, [(0, gap)],
                             mode='CONSTANT', constant_values=-1)
-        # Set shape so map_fn() can infer result shape
+        # map_fn()が結果の形状を推定できるように形状を設定
         class_keep.set_shape([config.DETECTION_MAX_INSTANCES])
         return class_keep
 
-    # 2. Map over class IDs
+    # 2. クラスIDをマップ
     nms_keep = tf.map_fn(nms_keep_map, unique_pre_nms_class_ids,
                          dtype=tf.int64)
-    # 3. Merge results into one list, and remove -1 padding
+    # 3. 結果を1つのリストにマージし、-1のパディングを削除
     nms_keep = tf.reshape(nms_keep, [-1])
     nms_keep = tf.gather(nms_keep, tf.where(nms_keep > -1)[:, 0])
-    # 4. Compute intersection between keep and nms_keep
+    # 4. keepとnms_keepの交差を計算
     keep = tf.sets.intersection(tf.expand_dims(keep, 0),
                                 tf.expand_dims(nms_keep, 0))
     keep = tf.sparse.to_dense(keep)[0]
-    # Keep top detections
+    # トップ検出を保持
     roi_count = config.DETECTION_MAX_INSTANCES
     class_scores_keep = tf.gather(class_scores, keep)
     num_keep = tf.minimum(tf.shape(class_scores_keep)[0], roi_count)
     top_ids = tf.nn.top_k(class_scores_keep, k=num_keep, sorted=True)[1]
     keep = tf.gather(keep, top_ids)
 
-    # Arrange output as [N, (y1, x1, y2, x2, class_id, score)]
-    # Coordinates are normalized.
+    # 出力を[N, (y1, x1, y2, x2, class_id, score)]に配置
+    # 座標は正規化されている。
     detections = tf.concat([
         tf.gather(refined_rois, keep),
         tf.cast(tf.gather(class_ids, keep), tf.float32)[..., tf.newaxis],
         tf.gather(class_scores, keep)[..., tf.newaxis]
         ], axis=1)
 
-    # Pad with zeros if detections < DETECTION_MAX_INSTANCES
+    # detections < DETECTION_MAX_INSTANCESの場合ゼロでパディング
     gap = config.DETECTION_MAX_INSTANCES - tf.shape(detections)[0]
     detections = tf.pad(detections, [(0, gap), (0, 0)], "CONSTANT")
     return detections
 
 
 class DetectionLayer(KE.Layer):
-    """Takes classified proposal boxes and their bounding box deltas and
-    returns the final detection boxes.
+    """分類された提案ボックスとそのバウンディングボックスデルタを受け取り、
+    最終的な検出ボックスを返す。
 
     Returns:
-    [batch, num_detections, (y1, x1, y2, x2, class_id, class_score)] where
-    coordinates are normalized.
+    [batch, num_detections, (y1, x1, y2, x2, class_id, class_score)]
+    座標は正規化済み。
     """
 
     def __init__(self, config=None, **kwargs):
@@ -798,23 +790,23 @@ class DetectionLayer(KE.Layer):
         mrcnn_bbox = inputs[2]
         image_meta = inputs[3]
 
-        # Get windows of images in normalized coordinates. Windows are the area
-        # in the image that excludes the padding.
-        # Use the shape of the first image in the batch to normalize the window
-        # because we know that all images get resized to the same size.
+        # 正規化座標での画像ウィンドウを取得。ウィンドウは
+        # パディングを除いた画像内の領域。
+        # バッチ内の最初の画像の形状を使用してウィンドウを正規化
+        # 全ての画像が同じサイズにリサイズされることが分かっているため。
         m = parse_image_meta_graph(image_meta)
         image_shape = m['image_shape'][0]
         window = norm_boxes_graph(m['window'], image_shape[:2])
 
-        # Run detection refinement graph on each item in the batch
+        # バッチ内の各アイテムに対して検出精密化グラフを実行
         detections_batch = utils.batch_slice(
             [rois, mrcnn_class, mrcnn_bbox, window],
             lambda x, y, w, z: refine_detections_graph(x, y, w, z, self.config),
             self.config.IMAGES_PER_GPU)
 
-        # Reshape output
-        # [batch, num_detections, (y1, x1, y2, x2, class_id, class_score)] in
-        # normalized coordinates
+        # 出力を再整形
+        # [batch, num_detections, (y1, x1, y2, x2, class_id, class_score)]
+        # 正規化座標
         return tf.reshape(
             detections_batch,
             [self.config.BATCH_SIZE, self.config.DETECTION_MAX_INSTANCES, 6])
@@ -824,49 +816,48 @@ class DetectionLayer(KE.Layer):
 
 
 ############################################################
-#  Region Proposal Network (RPN)
+#  領域提案ネットワーク (RPN)
 ############################################################
 
 def rpn_graph(feature_map, anchors_per_location, anchor_stride):
-    """Builds the computation graph of Region Proposal Network.
+    """領域提案ネットワークの計算グラフを構築する。
 
-    feature_map: backbone features [batch, height, width, depth]
-    anchors_per_location: number of anchors per pixel in the feature map
-    anchor_stride: Controls the density of anchors. Typically 1 (anchors for
-                   every pixel in the feature map), or 2 (every other pixel).
+    feature_map: バックボーンの特徴 [batch, height, width, depth]
+    anchors_per_location: 特徴マップ内のピクセル毎のアンカー数
+    anchor_stride: アンカーの密度を制御。通常は1（特徴マップの全ピクセル）
+                   または2（1ピクセル置き）。
 
     Returns:
-        rpn_class_logits: [batch, H * W * anchors_per_location, 2] Anchor classifier logits (before softmax)
-        rpn_probs: [batch, H * W * anchors_per_location, 2] Anchor classifier probabilities.
-        rpn_bbox: [batch, H * W * anchors_per_location, (dy, dx, log(dh), log(dw))] Deltas to be
-                  applied to anchors.
+        rpn_class_logits: [batch, H * W * anchors_per_location, 2] アンカー分類器のlogits（softmax前）
+        rpn_probs: [batch, H * W * anchors_per_location, 2] アンカー分類器の確率。
+        rpn_bbox: [batch, H * W * anchors_per_location, (dy, dx, log(dh), log(dw))] アンカーに
+                  適用される差分値。
     """
-    # TODO: check if stride of 2 causes alignment issues if the feature map
-    # is not even.
-    # Shared convolutional base of the RPN
+    # TODO: 特徴マップが偶数でない場合、stride=2がアライメントの問題を引き起こすか確認。
+    # RPNの共有畳み込みベース
     shared = KL.Conv2D(512, (3, 3), padding='same', activation='relu',
                        strides=anchor_stride,
                        name='rpn_conv_shared')(feature_map)
 
-    # Anchor Score. [batch, height, width, anchors per location * 2].
+    # アンカースコア。[batch, height, width, anchors per location * 2]。
     x = KL.Conv2D(2 * anchors_per_location, (1, 1), padding='valid',
                   activation='linear', name='rpn_class_raw')(shared)
 
-    # Reshape to [batch, anchors, 2]
+    # [batch, anchors, 2]に再整形
     rpn_class_logits = KL.Lambda(
         lambda t: tf.reshape(t, [tf.shape(t)[0], -1, 2]),
         output_shape=lambda s: (s[0], None, 2))(x)
 
-    # Softmax on last dimension of BG/FG.
+    # BG/FGの最後の次元にSoftmaxを適用。
     rpn_probs = KL.Activation(
         "softmax", name="rpn_class_xxx")(rpn_class_logits)
 
-    # Bounding box refinement. [batch, H, W, anchors per location * depth]
-    # where depth is [x, y, log(w), log(h)]
+    # バウンディングボックスの精密化。[batch, H, W, anchors per location * depth]
+    # depthは[x, y, log(w), log(h)]
     x = KL.Conv2D(anchors_per_location * 4, (1, 1), padding="valid",
                   activation='linear', name='rpn_bbox_pred')(shared)
 
-    # Reshape to [batch, anchors, 4]
+    # [batch, anchors, 4]に再整形
     rpn_bbox = KL.Lambda(
         lambda t: tf.reshape(t, [tf.shape(t)[0], -1, 4]),
         output_shape=lambda s: (s[0], None, 4))(x)
@@ -875,20 +866,19 @@ def rpn_graph(feature_map, anchors_per_location, anchor_stride):
 
 
 def build_rpn_model(anchor_stride, anchors_per_location, depth):
-    """Builds a Keras model of the Region Proposal Network.
-    It wraps the RPN graph so it can be used multiple times with shared
-    weights.
+    """領域提案ネットワークのKerasモデルを構築する。
+    RPNグラフをラップして、共有重みで繰り返し使用できるようにする。
 
-    anchors_per_location: number of anchors per pixel in the feature map
-    anchor_stride: Controls the density of anchors. Typically 1 (anchors for
-                   every pixel in the feature map), or 2 (every other pixel).
-    depth: Depth of the backbone feature map.
+    anchors_per_location: 特徴マップ内のピクセル毎のアンカー数
+    anchor_stride: アンカーの密度を制御。通常は1（特徴マップの全ピクセル）
+                   または2（1ピクセル置き）。
+    depth: バックボーン特徴マップの深さ。
 
-    Returns a Keras Model object. The model outputs, when called, are:
-    rpn_class_logits: [batch, H * W * anchors_per_location, 2] Anchor classifier logits (before softmax)
-    rpn_probs: [batch, H * W * anchors_per_location, 2] Anchor classifier probabilities.
-    rpn_bbox: [batch, H * W * anchors_per_location, (dy, dx, log(dh), log(dw))] Deltas to be
-                applied to anchors.
+    Keras Modelオブジェクトを返す。モデルの出力は呼び出された時：
+    rpn_class_logits: [batch, H * W * anchors_per_location, 2] アンカー分類器のlogits（softmax前）
+    rpn_probs: [batch, H * W * anchors_per_location, 2] アンカー分類器の確率。
+    rpn_bbox: [batch, H * W * anchors_per_location, (dy, dx, log(dh), log(dw))] アンカーに
+                適用される差分値。
     """
     input_feature_map = KL.Input(shape=[None, None, depth],
                                  name="input_rpn_feature_map")
@@ -897,36 +887,34 @@ def build_rpn_model(anchor_stride, anchors_per_location, depth):
 
 
 ############################################################
-#  Feature Pyramid Network Heads
+#  特徴ピラミッドネットワークヘッド
 ############################################################
 
 def fpn_classifier_graph(rois, feature_maps, image_meta,
                          pool_size, num_classes, train_bn=True,
                          fc_layers_size=1024):
-    """Builds the computation graph of the feature pyramid network classifier
-    and regressor heads.
+    """特徴ピラミッドネットワークの分類器および回帰ヘッドの計算グラフを構築する。
 
-    rois: [batch, num_rois, (y1, x1, y2, x2)] Proposal boxes in normalized
-          coordinates.
-    feature_maps: List of feature maps from different layers of the pyramid,
-                  [P2, P3, P4, P5]. Each has a different resolution.
-    image_meta: [batch, (meta data)] Image details. See compose_image_meta()
-    pool_size: The width of the square feature map generated from ROI Pooling.
-    num_classes: number of classes, which determines the depth of the results
-    train_bn: Boolean. Train or freeze Batch Norm layers
-    fc_layers_size: Size of the 2 FC layers
+    rois: [batch, num_rois, (y1, x1, y2, x2)] 正規化座標での提案ボックス。
+    feature_maps: ピラミッドの異なるレイヤーからの特徴マップのリスト、
+                  [P2, P3, P4, P5]。各々異なる解像度。
+    image_meta: [batch, (meta data)] 画像の詳細情報。compose_image_meta()を参照
+    pool_size: ROI Poolingで生成される正方形特徴マップの幅。
+    num_classes: 結果の深さを決めるクラス数
+    train_bn: ブール値。Batch Normレイヤーの訓練または固定
+    fc_layers_size: 2つのFCレイヤーのサイズ
 
     Returns:
-        logits: [batch, num_rois, NUM_CLASSES] classifier logits (before softmax)
-        probs: [batch, num_rois, NUM_CLASSES] classifier probabilities
-        bbox_deltas: [batch, num_rois, NUM_CLASSES, (dy, dx, log(dh), log(dw))] Deltas to apply to
-                     proposal boxes
+        logits: [batch, num_rois, NUM_CLASSES] 分類器のlogits（softmax前）
+        probs: [batch, num_rois, NUM_CLASSES] 分類器の確率
+        bbox_deltas: [batch, num_rois, NUM_CLASSES, (dy, dx, log(dh), log(dw))] 提案ボックスに
+                     適用される差分値
     """
-    # ROI Pooling
-    # Shape: [batch, num_rois, POOL_SIZE, POOL_SIZE, channels]
+    # ROIプーリング
+    # 形状: [batch, num_rois, POOL_SIZE, POOL_SIZE, channels]
     x = PyramidROIAlign([pool_size, pool_size],
                         name="roi_align_classifier")([rois, image_meta] + feature_maps)
-    # Two 1024 FC layers (implemented with Conv2D for consistency)
+    # 2つの1024 FCレイヤー（一貫性のためConv2Dで実装）
     x = KL.TimeDistributed(KL.Conv2D(fc_layers_size, (pool_size, pool_size), padding="valid"),
                            name="mrcnn_class_conv1")(x)
     x = KL.TimeDistributed(BatchNorm(), name='mrcnn_class_bn1')(x, training=train_bn)
@@ -940,15 +928,15 @@ def fpn_classifier_graph(rois, feature_maps, image_meta,
                        output_shape=lambda s: (s[0], s[1]),
                        name="pool_squeeze")(x)
 
-    # Classifier head
+    # 分類器ヘッド
     mrcnn_class_logits = KL.Dense(num_classes, name='mrcnn_class_logits')(shared)
     mrcnn_probs = KL.Activation("softmax", name="mrcnn_class")(mrcnn_class_logits)
 
-    # BBox head
+    # バウンディングボックスヘッド
     # [batch, num_rois, NUM_CLASSES * (dy, dx, log(dh), log(dw))]
     x = KL.Dense(num_classes * 4, activation='linear', name='mrcnn_bbox_fc')(shared)
-    # Reshape to [batch, num_rois, NUM_CLASSES, (dy, dx, log(dh), log(dw))]
-    # Use dynamic reshape for better TensorFlow 2.x compatibility
+    # [batch, num_rois, NUM_CLASSES, (dy, dx, log(dh), log(dw))]に再整形
+    # TensorFlow 2.xとの互換性向上のため動的再整形を使用
     mrcnn_bbox = KL.Reshape((-1, num_classes, 4), name="mrcnn_bbox")(x)
 
     return mrcnn_class_logits, mrcnn_probs, mrcnn_bbox
@@ -956,25 +944,24 @@ def fpn_classifier_graph(rois, feature_maps, image_meta,
 
 def build_fpn_mask_graph(rois, feature_maps, image_meta,
                          pool_size, num_classes, train_bn=True):
-    """Builds the computation graph of the mask head of Feature Pyramid Network.
+    """特徴ピラミッドネットワークのマスクヘッドの計算グラフを構築する。
 
-    rois: [batch, num_rois, (y1, x1, y2, x2)] Proposal boxes in normalized
-          coordinates.
-    feature_maps: List of feature maps from different layers of the pyramid,
-                  [P2, P3, P4, P5]. Each has a different resolution.
-    image_meta: [batch, (meta data)] Image details. See compose_image_meta()
-    pool_size: The width of the square feature map generated from ROI Pooling.
-    num_classes: number of classes, which determines the depth of the results
-    train_bn: Boolean. Train or freeze Batch Norm layers
+    rois: [batch, num_rois, (y1, x1, y2, x2)] 正規化座標での提案ボックス。
+    feature_maps: ピラミッドの異なるレイヤーからの特徴マップのリスト、
+                  [P2, P3, P4, P5]。各々異なる解像度。
+    image_meta: [batch, (meta data)] 画像の詳細情報。compose_image_meta()を参照
+    pool_size: ROI Poolingで生成される正方形特徴マップの幅。
+    num_classes: 結果の深さを決めるクラス数
+    train_bn: ブール値。Batch Normレイヤーの訓練または固定
 
-    Returns: Masks [batch, num_rois, MASK_POOL_SIZE, MASK_POOL_SIZE, NUM_CLASSES]
+    Returns: マスク [batch, num_rois, MASK_POOL_SIZE, MASK_POOL_SIZE, NUM_CLASSES]
     """
-    # ROI Pooling
-    # Shape: [batch, num_rois, MASK_POOL_SIZE, MASK_POOL_SIZE, channels]
+    # ROIプーリング
+    # 形状: [batch, num_rois, MASK_POOL_SIZE, MASK_POOL_SIZE, channels]
     x = PyramidROIAlign([pool_size, pool_size],
                         name="roi_align_mask")([rois, image_meta] + feature_maps)
 
-    # Conv layers
+    # 畳み込みレイヤー
     x = KL.TimeDistributed(KL.Conv2D(256, (3, 3), padding="same"),
                            name="mrcnn_mask_conv1")(x)
     x = KL.TimeDistributed(BatchNorm(),
@@ -1007,12 +994,12 @@ def build_fpn_mask_graph(rois, feature_maps, image_meta,
 
 
 ############################################################
-#  Loss Functions
+#  損失関数
 ############################################################
 
 def smooth_l1_loss(y_true, y_pred):
-    """Implements Smooth-L1 loss.
-    y_true and y_pred are typically: [N, 4], but could be any shape.
+    """Smooth-L1损失を実装する。
+    y_trueおy_predは通常: [N, 4]、しかし任意の形状可能。
     """
     diff = K.abs(y_true - y_pred)
     less_than_one = K.cast(K.less(diff, 1.0), "float32")
@@ -1021,23 +1008,23 @@ def smooth_l1_loss(y_true, y_pred):
 
 
 def rpn_class_loss_graph(rpn_match, rpn_class_logits):
-    """RPN anchor classifier loss.
+    """RPNアンカー分類器损失。
 
-    rpn_match: [batch, anchors, 1]. Anchor match type. 1=positive,
-               -1=negative, 0=neutral anchor.
-    rpn_class_logits: [batch, anchors, 2]. RPN classifier logits for BG/FG.
+    rpn_match: [batch, anchors, 1]。アンカーマッチタイプ。1=positive,
+               -1=negative, 0=neutral anchor。
+    rpn_class_logits: [batch, anchors, 2]。BG/FG用のRPN分類器logits。
     """
-    # Squeeze last dim to simplify
+    # 簡化のため最後の次元を圧縮
     rpn_match = tf.squeeze(rpn_match, -1)
-    # Get anchor classes. Convert the -1/+1 match to 0/1 values.
+    # アンカークラスを取得。-1/+1マッチを0/1値に変換。
     anchor_class = K.cast(K.equal(rpn_match, 1), tf.int32)
-    # Positive and Negative anchors contribute to the loss,
-    # but neutral anchors (match value = 0) don't.
+    # ポジティブとネガティブアンカーは损失に貢献するが、
+    # 中立アンカー（マッチ値 = 0）は貢献しない。
     indices = tf.where(K.not_equal(rpn_match, 0))
-    # Pick rows that contribute to the loss and filter out the rest.
+    # 损失に貢献する行を選び、他をフィルタリング。
     rpn_class_logits = tf.gather_nd(rpn_class_logits, indices)
     anchor_class = tf.gather_nd(anchor_class, indices)
-    # Cross entropy loss
+    # クロスエントロピー损失
     loss = K.sparse_categorical_crossentropy(target=anchor_class,
                                              output=rpn_class_logits,
                                              from_logits=True)
@@ -1046,24 +1033,24 @@ def rpn_class_loss_graph(rpn_match, rpn_class_logits):
 
 
 def rpn_bbox_loss_graph(config, target_bbox, rpn_match, rpn_bbox):
-    """Return the RPN bounding box loss graph.
+    """RPNバウンディングボックス损失グラフを返す。
 
-    config: the model config object.
-    target_bbox: [batch, max positive anchors, (dy, dx, log(dh), log(dw))].
-        Uses 0 padding to fill in unsed bbox deltas.
-    rpn_match: [batch, anchors, 1]. Anchor match type. 1=positive,
-               -1=negative, 0=neutral anchor.
+    config: モデル設定オブジェクト。
+    target_bbox: [batch, max positive anchors, (dy, dx, log(dh), log(dw))]。
+        未使用のbboxデルタを埋めるために0パディングを使用。
+    rpn_match: [batch, anchors, 1]。アンカーマッチタイプ。1=positive,
+               -1=negative, 0=neutral anchor。
     rpn_bbox: [batch, anchors, (dy, dx, log(dh), log(dw))]
     """
-    # Positive anchors contribute to the loss, but negative and
-    # neutral anchors (match value of 0 or -1) don't.
+    # ポジティブアンカーは损失に貢献するが、ネガティブと
+    # 中立アンカー（マッチ値が0または-1）は貢献しない。
     rpn_match = K.squeeze(rpn_match, -1)
     indices = tf.where(K.equal(rpn_match, 1))
 
-    # Pick bbox deltas that contribute to the loss
+    # 损失に貢献するbboxデルタを選択
     rpn_bbox = tf.gather_nd(rpn_bbox, indices)
 
-    # Trim target bounding box deltas to the same length as rpn_bbox.
+    # ターゲットバウンディングボックスデルタをrpn_bboxと同じ長さにトリム。
     batch_counts = K.sum(K.cast(K.equal(rpn_match, 1), tf.int32), axis=1)
     target_bbox = batch_pack_graph(target_bbox, batch_counts,
                                    config.IMAGES_PER_GPU)
@@ -1076,64 +1063,60 @@ def rpn_bbox_loss_graph(config, target_bbox, rpn_match, rpn_bbox):
 
 def mrcnn_class_loss_graph(target_class_ids, pred_class_logits,
                            active_class_ids):
-    """Loss for the classifier head of Mask RCNN.
+    """Mask RCNNの分類器ヘッドの損失。
 
-    target_class_ids: [batch, num_rois]. Integer class IDs. Uses zero
-        padding to fill in the array.
+    target_class_ids: [batch, num_rois]. 整数クラスID。配列を埋めるために
+        ゼロパディングを使用。
     pred_class_logits: [batch, num_rois, num_classes]
-    active_class_ids: [batch, num_classes]. Has a value of 1 for
-        classes that are in the dataset of the image, and 0
-        for classes that are not in the dataset.
+    active_class_ids: [batch, num_classes]. 画像のデータセットに含まれる
+        クラスには1の値、データセットにないクラスには0の値。
     """
-    # During model building, Keras calls this function with
-    # target_class_ids of type float32. Unclear why. Cast it
-    # to int to get around it.
+    # モデル構築中、Kerasはこの関数をfloat32型のtarget_class_idsで呼び出す。
+    # 理由は不明。回避するためintにキャストする。
     target_class_ids = tf.cast(target_class_ids, 'int64')
 
-    # Find predictions of classes that are not in the dataset.
+    # データセットにないクラスの予測を検出。
     pred_class_ids = tf.argmax(pred_class_logits, axis=2)
-    # TODO: Update this line to work with batch > 1. Right now it assumes all
-    #       images in a batch have the same active_class_ids
+    # TODO: バッチ > 1で動作するようにこの行を更新。現在はバッチ内の全ての
+    #       画像が同じactive_class_idsを持つことを仮定している。
     pred_active = tf.gather(active_class_ids[0], pred_class_ids)
 
-    # Loss
+    # 損失
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
         labels=target_class_ids, logits=pred_class_logits)
 
-    # Erase losses of predictions of classes that are not in the active
-    # classes of the image.
+    # 画像のアクティブクラスに含まれないクラスの予測の損失を消去。
     loss = loss * pred_active
 
-    # Computer loss mean. Use only predictions that contribute
-    # to the loss to get a correct mean.
+    # 損失の平均を計算。正しい平均を得るため、損失に貢献する予測のみ使用。
     loss = tf.reduce_sum(loss) / tf.reduce_sum(pred_active)
     return loss
 
 
 def mrcnn_bbox_loss_graph(target_bbox, target_class_ids, pred_bbox):
-    """Loss for Mask R-CNN bounding box refinement.
+    """Mask R-CNNバウンディングボックス精細化の損失。
 
     target_bbox: [batch, num_rois, (dy, dx, log(dh), log(dw))]
-    target_class_ids: [batch, num_rois]. Integer class IDs.
+    target_class_ids: [batch, num_rois]. 整数クラスID。
     pred_bbox: [batch, num_rois, num_classes, (dy, dx, log(dh), log(dw))]
     """
-    # Reshape to merge batch and roi dimensions for simplicity.
+    # 簡化のためバッチとroi次元をマージして再整形。
     target_class_ids = K.reshape(target_class_ids, (-1,))
     target_bbox = K.reshape(target_bbox, (-1, 4))
     pred_bbox = K.reshape(pred_bbox, (-1, tf.shape(pred_bbox)[2], 4))
 
-    # Only positive ROIs contribute to the loss. And only
-    # the right class_id of each ROI. Get their indices.
+    # ポジティブROIのみ損失に貢献。そして各ROIの正しいclass_idのみ。
+    # それらのインデックスを取得。
     positive_roi_ix = tf.where(target_class_ids > 0)[:, 0]
     positive_roi_class_ids = tf.cast(
         tf.gather(target_class_ids, positive_roi_ix), tf.int64)
     indices = tf.stack([positive_roi_ix, positive_roi_class_ids], axis=1)
 
-    # Gather the deltas (predicted and true) that contribute to loss
+    # 損失に貢献するデルタ（予測値と真値）を収集
     target_bbox = tf.gather(target_bbox, positive_roi_ix)
     pred_bbox = tf.gather_nd(pred_bbox, indices)
 
-    # Smooth-L1 Loss
+    # スムーズL1損失
     loss = K.switch(tf.size(target_bbox) > 0,
                     smooth_l1_loss(y_true=target_bbox, y_pred=pred_bbox),
                     tf.constant(0.0))
@@ -1142,37 +1125,36 @@ def mrcnn_bbox_loss_graph(target_bbox, target_class_ids, pred_bbox):
 
 
 def mrcnn_mask_loss_graph(target_masks, target_class_ids, pred_masks):
-    """Mask binary cross-entropy loss for the masks head.
+    """マスクヘッドのマスクバイナリクロスエントロピー損失。
 
     target_masks: [batch, num_rois, height, width].
-        A float32 tensor of values 0 or 1. Uses zero padding to fill array.
-    target_class_ids: [batch, num_rois]. Integer class IDs. Zero padded.
-    pred_masks: [batch, proposals, height, width, num_classes] float32 tensor
-                with values from 0 to 1.
+        0または1の値のfloat32テンソル。配列を埋めるためゼロパディングを使用。
+    target_class_ids: [batch, num_rois]. 整数クラスID。ゼロパディング済み。
+    pred_masks: [batch, proposals, height, width, num_classes] 0から1の値の
+                float32テンソル。
     """
-    # Reshape for simplicity. Merge first two dimensions into one.
+    # 簡化のため再整形。最初の2つの次元をマージ。
     target_class_ids = K.reshape(target_class_ids, (-1,))
     mask_shape = tf.shape(target_masks)
     target_masks = K.reshape(target_masks, (-1, mask_shape[2], mask_shape[3]))
     pred_shape = tf.shape(pred_masks)
     pred_masks = K.reshape(pred_masks,
                            (-1, pred_shape[2], pred_shape[3], pred_shape[4]))
-    # Permute predicted masks to [N, num_classes, height, width]
+    # 予測マスクを[N, num_classes, height, width]に置換
     pred_masks = tf.transpose(pred_masks, [0, 3, 1, 2])
 
-    # Only positive ROIs contribute to the loss. And only
-    # the class specific mask of each ROI.
+    # ポジティブROIのみ損失に貢献。そして各ROIのクラス固有マスクのみ。
     positive_ix = tf.where(target_class_ids > 0)[:, 0]
     positive_class_ids = tf.cast(
         tf.gather(target_class_ids, positive_ix), tf.int64)
     indices = tf.stack([positive_ix, positive_class_ids], axis=1)
 
-    # Gather the masks (predicted and true) that contribute to loss
+    # 損失に貢献するマスク（予測値と真値）を収集
     y_true = tf.gather(target_masks, positive_ix)
     y_pred = tf.gather_nd(pred_masks, indices)
 
-    # Compute binary cross entropy. If no positive ROIs, then return 0.
-    # shape: [batch, roi, num_classes]
+    # バイナリクロスエントロピーを計算。ポジティブROIがない場合は0を返す。
+    # 形状: [batch, roi, num_classes]
     loss = K.switch(tf.size(y_true) > 0,
                     K.binary_crossentropy(target=y_true, output=y_pred),
                     tf.constant(0.0))
@@ -1181,34 +1163,32 @@ def mrcnn_mask_loss_graph(target_masks, target_class_ids, pred_masks):
 
 
 ############################################################
-#  Data Generator
+#  データジェネレーター
 ############################################################
 
 def load_image_gt(dataset, config, image_id, augment=False, augmentation=None,
                   use_mini_mask=False):
-    """Load and return ground truth data for an image (image, mask, bounding boxes).
+    """画像の正解データ（画像、マスク、バウンディングボックス）を読み込んで返す。
 
-    augment: (deprecated. Use augmentation instead). If true, apply random
-        image augmentation. Currently, only horizontal flipping is offered.
-    augmentation: Optional. An imgaug (https://github.com/aleju/imgaug) augmentation.
-        For example, passing imgaug.augmenters.Fliplr(0.5) flips images
-        right/left 50% of the time.
-    use_mini_mask: If False, returns full-size masks that are the same height
-        and width as the original image. These can be big, for example
-        1024x1024x100 (for 100 instances). Mini masks are smaller, typically,
-        224x224 and are generated by extracting the bounding box of the
-        object and resizing it to MINI_MASK_SHAPE.
+    augment: （非推奨。代わりにaugmentationを使用）。Trueの場合、ランダムな
+        画像拡張を適用。現在は水平反転のみ提供。
+    augmentation: オプション。imgaug (https://github.com/aleju/imgaug) 拡張。
+        例：imgaug.augmenters.Fliplr(0.5)を渡すと50%の確率で画像を
+        左右反転させる。
+    use_mini_mask: Falseの場合、元画像と同じ高さと幅のフルサイズマスクを返す。
+        これらは大きくなる可能性があり、例えば1024x1024x100（100インスタンス）。
+        ミニマスクはより小さく、通常224x224で、オブジェクトのバウンディングボックスを
+        抽出してMINI_MASK_SHAPEにリサイズすることで生成される。
 
     Returns:
     image: [height, width, 3]
-    shape: the original shape of the image before resizing and cropping.
-    class_ids: [instance_count] Integer class IDs
+    shape: リサイズとクロッピング前の画像の元の形状。
+    class_ids: [instance_count] 整数クラスID
     bbox: [instance_count, (y1, x1, y2, x2)]
-    mask: [height, width, instance_count]. The height and width are those
-        of the image unless use_mini_mask is True, in which case they are
-        defined in MINI_MASK_SHAPE.
+    mask: [height, width, instance_count]. 高さと幅は画像のものだが、
+        use_mini_maskがTrueの場合はMINI_MASK_SHAPEで定義される。
     """
-    # Load image and mask
+    # 画像とマスクを読み込み
     image = dataset.load_image(image_id)
     mask, class_ids = dataset.load_mask(image_id)
     original_shape = image.shape
@@ -1220,67 +1200,67 @@ def load_image_gt(dataset, config, image_id, augment=False, augmentation=None,
         mode=config.IMAGE_RESIZE_MODE)
     mask = utils.resize_mask(mask, scale, padding, crop)
 
-    # Random horizontal flips.
-    # TODO: will be removed in a future update in favor of augmentation
+    # ランダムな水平反転。
+    # TODO: 将来のアップデートでaugmentationに置き換えられて削除予定
     if augment:
-        logging.warning("'augment' is deprecated. Use 'augmentation' instead.")
+        logging.warning("'augment'は非推奨です。代わりに'augmentation'を使用してください。")
         if random.randint(0, 1):
             image = np.fliplr(image)
             mask = np.fliplr(mask)
 
-    # Augmentation
-    # This requires the imgaug lib (https://github.com/aleju/imgaug)
+    # データ拡張
+    # imgaugライブラリが必要 (https://github.com/aleju/imgaug)
     if augmentation:
         import imgaug
 
-        # Augmenters that are safe to apply to masks
-        # Some, such as Affine, have settings that make them unsafe, so always
-        # test your augmentation on masks
+        # マスクに安全に適用できる拡張器
+        # Affineなど一部の拡張器には安全でない設定があるため、
+        # 必ずマスクで拡張をテストする
         MASK_AUGMENTERS = ["Sequential", "SomeOf", "OneOf", "Sometimes",
                            "Fliplr", "Flipud", "CropAndPad",
                            "Affine", "PiecewiseAffine"]
 
         def hook(images, augmenter, parents, default):
-            """Determines which augmenters to apply to masks."""
+            """マスクに適用する拡張器を決定する。"""
             return augmenter.__class__.__name__ in MASK_AUGMENTERS
 
-        # Store shapes before augmentation to compare
+        # 比較のため拡張前の形状を保存
         image_shape = image.shape
         mask_shape = mask.shape
-        # Make augmenters deterministic to apply similarly to images and masks
+        # 画像とマスクに同様に適用するため拡張器を決定的にする
         det = augmentation.to_deterministic()
         image = det.augment_image(image)
-        # Change mask to np.uint8 because imgaug doesn't support np.bool
+        # imgaugがnp.boolをサポートしないためマスクをnp.uint8に変更
         mask = det.augment_image(mask.astype(np.uint8),
                                  hooks=imgaug.HooksImages(activator=hook))
-        # Verify that shapes didn't change
-        assert image.shape == image_shape, "Augmentation shouldn't change image size"
-        assert mask.shape == mask_shape, "Augmentation shouldn't change mask size"
-        # Change mask back to bool
+        # 形状が変わっていないことを確認
+        assert image.shape == image_shape, "データ拡張は画像サイズを変更すべきではありません"
+        assert mask.shape == mask_shape, "データ拡張はマスクサイズを変更すべきではありません"
+        # マスクをboolに戻す
         mask = mask.astype(np.bool)
 
-    # Note that some boxes might be all zeros if the corresponding mask got cropped out.
-    # and here is to filter them out
+    # 対応するマスクがクロップされた場合、一部のボックスが全てゼロになる可能性がある。
+    # ここでそれらをフィルタリングする
     _idx = np.sum(mask, axis=(0, 1)) > 0
     mask = mask[:, :, _idx]
     class_ids = class_ids[_idx]
-    # Bounding boxes. Note that some boxes might be all zeros
-    # if the corresponding mask got cropped out.
+    # バウンディングボックス。対応するマスクがクロップされた場合、
+    # 一部のボックスが全てゼロになる可能性がある。
     # bbox: [num_instances, (y1, x1, y2, x2)]
     bbox = utils.extract_bboxes(mask)
 
-    # Active classes
-    # Different datasets have different classes, so track the
-    # classes supported in the dataset of this image.
+    # アクティブクラス
+    # 異なるデータセットは異なるクラスを持つため、
+    # この画像のデータセットでサポートされるクラスを追跡する。
     active_class_ids = np.zeros([dataset.num_classes], dtype=np.int32)
     source_class_ids = dataset.source_class_ids[dataset.image_info[image_id]["source"]]
     active_class_ids[source_class_ids] = 1
 
-    # Resize masks to smaller size to reduce memory usage
+    # メモリ使用量を減らすためマスクを小さなサイズにリサイズ
     if use_mini_mask:
         mask = utils.minimize_mask(bbox, mask, config.MINI_MASK_SHAPE)
 
-    # Image meta data
+    # 画像メタデータ
     image_meta = compose_image_meta(image_id, original_shape, image.shape,
                                     window, scale, active_class_ids)
 
@@ -1288,73 +1268,73 @@ def load_image_gt(dataset, config, image_id, augment=False, augmentation=None,
 
 
 def build_detection_targets(rpn_rois, gt_class_ids, gt_boxes, gt_masks, config):
-    """Generate targets for training Stage 2 classifier and mask heads.
-    This is not used in normal training. It's useful for debugging or to train
-    the Mask RCNN heads without using the RPN head.
+    """Stage 2分類器およびマスクヘッドの訓練用ターゲットを生成。
+    これは通常の訓練では使用されない。デバッグやRPNヘッドを使わずに
+    Mask RCNNヘッドを訓練するのに有用。
 
-    Inputs:
-    rpn_rois: [N, (y1, x1, y2, x2)] proposal boxes.
-    gt_class_ids: [instance count] Integer class IDs
+    入力:
+    rpn_rois: [N, (y1, x1, y2, x2)] 提案ボックス。
+    gt_class_ids: [instance count] 整数型クラスID
     gt_boxes: [instance count, (y1, x1, y2, x2)]
-    gt_masks: [height, width, instance count] Ground truth masks. Can be full
-              size or mini-masks.
+    gt_masks: [height, width, instance count] 正解マスク。フルサイズまたは
+              ミニマスク可能。
 
-    Returns:
+    返し値:
     rois: [TRAIN_ROIS_PER_IMAGE, (y1, x1, y2, x2)]
-    class_ids: [TRAIN_ROIS_PER_IMAGE]. Integer class IDs.
-    bboxes: [TRAIN_ROIS_PER_IMAGE, NUM_CLASSES, (y, x, log(h), log(w))]. Class-specific
-            bbox refinements.
-    masks: [TRAIN_ROIS_PER_IMAGE, height, width, NUM_CLASSES). Class specific masks cropped
-           to bbox boundaries and resized to neural network output size.
+    class_ids: [TRAIN_ROIS_PER_IMAGE]。整数型クラスID。
+    bboxes: [TRAIN_ROIS_PER_IMAGE, NUM_CLASSES, (y, x, log(h), log(w))]。クラス固有の
+            bbox精密化。
+    masks: [TRAIN_ROIS_PER_IMAGE, height, width, NUM_CLASSES)。bbox境界にクロップされ、
+           ニューラルネットワーク出力サイズにリサイズされたクラス固有マスク。
     """
     assert rpn_rois.shape[0] > 0
-    assert gt_class_ids.dtype == np.int32, "Expected int but got {}".format(
+    assert gt_class_ids.dtype == np.int32, "intを期待したが{}を取得".format(
         gt_class_ids.dtype)
-    assert gt_boxes.dtype == np.int32, "Expected int but got {}".format(
+    assert gt_boxes.dtype == np.int32, "intを期待したが{}を取得".format(
         gt_boxes.dtype)
-    assert gt_masks.dtype == np.bool_, "Expected bool but got {}".format(
+    assert gt_masks.dtype == np.bool_, "boolを期待したが{}を取得".format(
         gt_masks.dtype)
 
-    # It's common to add GT Boxes to ROIs but we don't do that here because
-    # according to XinLei Chen's paper, it doesn't help.
+    # GTボックスをROIに追加するのが一般的だが、ここでは行わない。
+    # XinLei Chenの論文によると効果がないため。
 
-    # Trim empty padding in gt_boxes and gt_masks parts
+    # gt_boxesとgt_masks部分の空のパディングをトリム
     instance_ids = np.where(gt_class_ids > 0)[0]
-    assert instance_ids.shape[0] > 0, "Image must contain instances."
+    assert instance_ids.shape[0] > 0, "画像にはインスタンスが含まれている必要があります。"
     gt_class_ids = gt_class_ids[instance_ids]
     gt_boxes = gt_boxes[instance_ids]
     gt_masks = gt_masks[:, :, instance_ids]
 
-    # Compute areas of ROIs and ground truth boxes.
+    # ROIと正解ボックスの面積を計算。
     rpn_roi_area = (rpn_rois[:, 2] - rpn_rois[:, 0]) * \
         (rpn_rois[:, 3] - rpn_rois[:, 1])
     gt_box_area = (gt_boxes[:, 2] - gt_boxes[:, 0]) * \
         (gt_boxes[:, 3] - gt_boxes[:, 1])
 
-    # Compute overlaps [rpn_rois, gt_boxes]
+    # 重なりを計算 [rpn_rois, gt_boxes]
     overlaps = np.zeros((rpn_rois.shape[0], gt_boxes.shape[0]))
     for i in range(overlaps.shape[1]):
         gt = gt_boxes[i]
         overlaps[:, i] = utils.compute_iou(
             gt, rpn_rois, gt_box_area[i], rpn_roi_area)
 
-    # Assign ROIs to GT boxes
+    # ROIをGTボックスに割り当て
     rpn_roi_iou_argmax = np.argmax(overlaps, axis=1)
     rpn_roi_iou_max = overlaps[np.arange(
         overlaps.shape[0]), rpn_roi_iou_argmax]
-    # GT box assigned to each ROI
+    # 各ROIに割り当てられたGTボックス
     rpn_roi_gt_boxes = gt_boxes[rpn_roi_iou_argmax]
     rpn_roi_gt_class_ids = gt_class_ids[rpn_roi_iou_argmax]
 
-    # Positive ROIs are those with >= 0.5 IoU with a GT box.
+    # ポジティブROIはGTボックスとのIoU >= 0.5のもの。
     fg_ids = np.where(rpn_roi_iou_max > 0.5)[0]
 
-    # Negative ROIs are those with max IoU 0.1-0.5 (hard example mining)
-    # TODO: To hard example mine or not to hard example mine, that's the question
+    # ネガティブROIは最大IoU 0.1-0.5のもの（ハード例マイニング）
+    # TODO: ハード例マイニングするかしないか、それが問題
     # bg_ids = np.where((rpn_roi_iou_max >= 0.1) & (rpn_roi_iou_max < 0.5))[0]
     bg_ids = np.where(rpn_roi_iou_max < 0.5)[0]
 
-    # Subsample ROIs. Aim for 33% foreground.
+    # ROIをサブサンプル。前景33%を目指す。
     # FG
     fg_roi_count = int(config.TRAIN_ROIS_PER_IMAGE * config.ROI_POSITIVE_RATIO)
     if fg_ids.shape[0] > fg_roi_count:
@@ -1367,25 +1347,25 @@ def build_detection_targets(rpn_rois, gt_class_ids, gt_boxes, gt_masks, config):
         keep_bg_ids = np.random.choice(bg_ids, remaining, replace=False)
     else:
         keep_bg_ids = bg_ids
-    # Combine indices of ROIs to keep
+    # 保持するROIのインデックスを結合
     keep = np.concatenate([keep_fg_ids, keep_bg_ids])
-    # Need more?
+    # もっと必要？
     remaining = config.TRAIN_ROIS_PER_IMAGE - keep.shape[0]
     if remaining > 0:
-        # Looks like we don't have enough samples to maintain the desired
-        # balance. Reduce requirements and fill in the rest. This is
-        # likely different from the Mask RCNN paper.
+        # 望ましい数を維持するのに十分なサンプルがないようだ
+        # バランス。要求を緩和し残りを埋める。これは
+        # Mask RCNN論文とは異なる可能性がある。
 
-        # There is a small chance we have neither fg nor bg samples.
+        # fgもbgもサンプルがない可能性がわずかにある。
         if keep.shape[0] == 0:
-            # Pick bg regions with easier IoU threshold
+            # より簡単なIoU閾値でbg領域を選択
             bg_ids = np.where(rpn_roi_iou_max < 0.5)[0]
             assert bg_ids.shape[0] >= remaining
             keep_bg_ids = np.random.choice(bg_ids, remaining, replace=False)
             assert keep_bg_ids.shape[0] == remaining
             keep = np.concatenate([keep, keep_bg_ids])
         else:
-            # Fill the rest with repeated bg rois.
+            # 残りを繰り返し背景roiで埋める。
             keep_extra_ids = np.random.choice(
                 keep_bg_ids, remaining, replace=True)
             keep = np.concatenate([keep, keep_extra_ids])
@@ -1393,26 +1373,26 @@ def build_detection_targets(rpn_rois, gt_class_ids, gt_boxes, gt_masks, config):
         "keep doesn't match ROI batch size {}, {}".format(
             keep.shape[0], config.TRAIN_ROIS_PER_IMAGE)
 
-    # Reset the gt boxes assigned to BG ROIs.
+    # BG ROIに割り当てられたgtボックスをリセット。
     rpn_roi_gt_boxes[keep_bg_ids, :] = 0
     rpn_roi_gt_class_ids[keep_bg_ids] = 0
 
-    # For each kept ROI, assign a class_id, and for FG ROIs also add bbox refinement.
+    # 保持された各ROIにclass_idを割り当て、FG ROIにはbbox refinementも追加。
     rois = rpn_rois[keep]
     roi_gt_boxes = rpn_roi_gt_boxes[keep]
     roi_gt_class_ids = rpn_roi_gt_class_ids[keep]
     roi_gt_assignment = rpn_roi_iou_argmax[keep]
 
-    # Class-aware bbox deltas. [y, x, log(h), log(w)]
+    # クラス認識bbox deltas. [y, x, log(h), log(w)]
     bboxes = np.zeros((config.TRAIN_ROIS_PER_IMAGE,
                        config.NUM_CLASSES, 4), dtype=np.float32)
     pos_ids = np.where(roi_gt_class_ids > 0)[0]
     bboxes[pos_ids, roi_gt_class_ids[pos_ids]] = utils.box_refinement(
         rois[pos_ids], roi_gt_boxes[pos_ids, :4])
-    # Normalize bbox refinements
+    # bbox精密化を正規化
     bboxes /= config.BBOX_STD_DEV
 
-    # Generate class-specific target masks
+    # クラス固有ターゲットマスクを生成
     masks = np.zeros((config.TRAIN_ROIS_PER_IMAGE, config.MASK_SHAPE[0], config.MASK_SHAPE[1], config.NUM_CLASSES),
                      dtype=np.float32)
     for i in pos_ids:
@@ -1422,19 +1402,19 @@ def build_detection_targets(rpn_rois, gt_class_ids, gt_boxes, gt_masks, config):
         class_mask = gt_masks[:, :, gt_id]
 
         if config.USE_MINI_MASK:
-            # Create a mask placeholder, the size of the image
+            # 画像サイズのマスクプレースホルダーを作成
             placeholder = np.zeros(config.IMAGE_SHAPE[:2], dtype=bool)
-            # GT box
+            # GTボックス
             gt_y1, gt_x1, gt_y2, gt_x2 = gt_boxes[gt_id]
             gt_w = gt_x2 - gt_x1
             gt_h = gt_y2 - gt_y1
-            # Resize mini mask to size of GT box
+            # ミニマスクをGTボックスサイズにリサイズ
             placeholder[gt_y1:gt_y2, gt_x1:gt_x2] = \
                 np.round(utils.resize(class_mask, (gt_h, gt_w))).astype(bool)
-            # Place the mini batch in the placeholder
+            # ミニバッチをプレースホルダーに配置
             class_mask = placeholder
 
-        # Pick part of the mask and resize it
+        # マスクの一部を取得してリサイズ
         y1, x1, y2, x2 = rois[i].astype(np.int32)
         m = class_mask[y1:y2, x1:x2]
         mask = utils.resize(m, config.MASK_SHAPE)
@@ -1444,110 +1424,110 @@ def build_detection_targets(rpn_rois, gt_class_ids, gt_boxes, gt_masks, config):
 
 
 def build_rpn_targets(image_shape, anchors, gt_class_ids, gt_boxes, config):
-    """Given the anchors and GT boxes, compute overlaps and identify positive
-    anchors and deltas to refine them to match their corresponding GT boxes.
+    """アンカーとGTボックスが与えられた場合、重なりを計算し、ポジティブ
+    アンカーとそれらを対応するGTボックスに一致するように精密化するデルタを識別する。
 
     anchors: [num_anchors, (y1, x1, y2, x2)]
-    gt_class_ids: [num_gt_boxes] Integer class IDs.
+    gt_class_ids: [num_gt_boxes] 整数型クラスID。
     gt_boxes: [num_gt_boxes, (y1, x1, y2, x2)]
 
     Returns:
-    rpn_match: [N] (int32) matches between anchors and GT boxes.
-               1 = positive anchor, -1 = negative anchor, 0 = neutral
-    rpn_bbox: [N, (dy, dx, log(dh), log(dw))] Anchor bbox deltas.
+    rpn_match: [N] (int32) アンカーとGTボックスの一致。
+               1 = ポジティブアンカー、-1 = ネガティブアンカー、0 = ニュートラル
+    rpn_bbox: [N, (dy, dx, log(dh), log(dw))] アンカーbboxデルタ。
     """
-    # RPN Match: 1 = positive anchor, -1 = negative anchor, 0 = neutral
+    # RPNマッチ: 1 = ポジティブアンカー、-1 = ネガティブアンカー、0 = ニュートラル
     rpn_match = np.zeros([anchors.shape[0]], dtype=np.int32)
-    # RPN bounding boxes: [max anchors per image, (dy, dx, log(dh), log(dw))]
+    # RPNバウンディングボックス: [画像あたりの最大アンカー数, (dy, dx, log(dh), log(dw))]
     rpn_bbox = np.zeros((config.RPN_TRAIN_ANCHORS_PER_IMAGE, 4))
 
-    # Handle COCO crowds
-    # A crowd box in COCO is a bounding box around several instances. Exclude
-    # them from training. A crowd box is given a negative class ID.
+    # COCO群衆を処理
+    # COCOの群衆ボックスは複数のインスタンスを囲むバウンディングボックス。
+    # 訓練から除外する。群衆ボックスには負のクラスIDが与えられる。
     crowd_ix = np.where(gt_class_ids < 0)[0]
     if crowd_ix.shape[0] > 0:
-        # Filter out crowds from ground truth class IDs and boxes
+        # 正解クラスIDとボックスから群衆をフィルタリング
         non_crowd_ix = np.where(gt_class_ids > 0)[0]
         crowd_boxes = gt_boxes[crowd_ix]
         gt_class_ids = gt_class_ids[non_crowd_ix]
         gt_boxes = gt_boxes[non_crowd_ix]
-        # Compute overlaps with crowd boxes [anchors, crowds]
+        # 群衆ボックスとの重なりを計算 [anchors, crowds]
         crowd_overlaps = utils.compute_overlaps(anchors, crowd_boxes)
         crowd_iou_max = np.amax(crowd_overlaps, axis=1)
         no_crowd_bool = (crowd_iou_max < 0.001)
     else:
-        # All anchors don't intersect a crowd
+        # 全てのアンカーが群衆と交差しない
         no_crowd_bool = np.ones([anchors.shape[0]], dtype=bool)
 
-    # Compute overlaps [num_anchors, num_gt_boxes]
+    # 重なりを計算 [num_anchors, num_gt_boxes]
     overlaps = utils.compute_overlaps(anchors, gt_boxes)
 
-    # Match anchors to GT Boxes
-    # If an anchor overlaps a GT box with IoU >= 0.7 then it's positive.
-    # If an anchor overlaps a GT box with IoU < 0.3 then it's negative.
-    # Neutral anchors are those that don't match the conditions above,
-    # and they don't influence the loss function.
-    # However, don't keep any GT box unmatched (rare, but happens). Instead,
-    # match it to the closest anchor (even if its max IoU is < 0.3).
+    # アンカーをGTボックスにマッチ
+    # アンカーがGTボックスとのIoU >= 0.7で重なる場合、ポジティブ。
+    # アンカーがGTボックスとのIoU < 0.3で重なる場合、ネガティブ。
+    # ニュートラルアンカーは上記条件に一致しないもので、
+    # 損失関数に影響を与えない。
+    # ただし、GTボックスを未マッチのままにしない（稀だが発生）。代わりに、
+    # 最も近いアンカーにマッチさせる（最大IoUが< 0.3でも）。
     #
-    # 1. Set negative anchors first. They get overwritten below if a GT box is
-    # matched to them. Skip boxes in crowd areas.
+    # 1. 最初にネガティブアンカーを設定。GTボックスが
+    # マッチした場合は以下で上書きされる。群衆エリアのボックスをスキップ。
     anchor_iou_argmax = np.argmax(overlaps, axis=1)
     anchor_iou_max = overlaps[np.arange(overlaps.shape[0]), anchor_iou_argmax]
     rpn_match[(anchor_iou_max < 0.3) & (no_crowd_bool)] = -1
-    # 2. Set an anchor for each GT box (regardless of IoU value).
-    # If multiple anchors have the same IoU match all of them
+    # 2. 各GTボックスにアンカーを設定（IoU値に関係なく）。
+    # 複数のアンカーが同じIoUを持つ場合、すべてをマッチ
     gt_iou_argmax = np.argwhere(overlaps == np.max(overlaps, axis=0))[:,0]
     rpn_match[gt_iou_argmax] = 1
-    # 3. Set anchors with high overlap as positive.
+    # 3. 高い重複を持つアンカーをポジティブに設定。
     rpn_match[anchor_iou_max >= 0.7] = 1
 
-    # Subsample to balance positive and negative anchors
-    # Don't let positives be more than half the anchors
+    # ポジティブとネガティブアンカーのバランスを取るためサブサンプル
+    # ポジティブがアンカーの半分を超えないようにする
     ids = np.where(rpn_match == 1)[0]
     extra = len(ids) - (config.RPN_TRAIN_ANCHORS_PER_IMAGE // 2)
     if extra > 0:
-        # Reset the extra ones to neutral
+        # 余ったものを中立にリセット
         ids = np.random.choice(ids, extra, replace=False)
         rpn_match[ids] = 0
-    # Same for negative proposals
+    # ネガティブ提案も同様
     ids = np.where(rpn_match == -1)[0]
     extra = len(ids) - (config.RPN_TRAIN_ANCHORS_PER_IMAGE -
                         np.sum(rpn_match == 1))
     if extra > 0:
-        # Rest the extra ones to neutral
+        # 余ったものを中立にリセット
         ids = np.random.choice(ids, extra, replace=False)
         rpn_match[ids] = 0
 
-    # For positive anchors, compute shift and scale needed to transform them
-    # to match the corresponding GT boxes.
+    # ポジティブアンカーについて、対応するGTボックスにマッチさせるために
+    # 必要なシフトとスケールを計算。
     ids = np.where(rpn_match == 1)[0]
     ix = 0  # index into rpn_bbox
-    # TODO: use box_refinement() rather than duplicating the code here
+    # TODO: ここでコードを重複するよりもbox_refinement()を使用
     for i, a in zip(ids, anchors[ids]):
-        # Closest gt box (it might have IoU < 0.7)
+        # 最も近いgtボックス（IoU < 0.7の可能性あり）
         gt = gt_boxes[anchor_iou_argmax[i]]
 
-        # Convert coordinates to center plus width/height.
-        # GT Box
+        # 座標を中心点＋幅/高さに変換。
+        # GTボックス
         gt_h = gt[2] - gt[0]
         gt_w = gt[3] - gt[1]
         gt_center_y = gt[0] + 0.5 * gt_h
         gt_center_x = gt[1] + 0.5 * gt_w
-        # Anchor
+        # アンカー
         a_h = a[2] - a[0]
         a_w = a[3] - a[1]
         a_center_y = a[0] + 0.5 * a_h
         a_center_x = a[1] + 0.5 * a_w
 
-        # Compute the bbox refinement that the RPN should predict.
+        # RPNが予測すべきバウンディングボックスの精密化を計算。
         rpn_bbox[ix] = [
             (gt_center_y - a_center_y) / a_h,
             (gt_center_x - a_center_x) / a_w,
             np.log(gt_h / a_h),
             np.log(gt_w / a_w),
         ]
-        # Normalize
+        # 正規化
         rpn_bbox[ix] /= config.RPN_BBOX_STD_DEV
         ix += 1
 
@@ -1555,38 +1535,37 @@ def build_rpn_targets(image_shape, anchors, gt_class_ids, gt_boxes, config):
 
 
 def generate_random_rois(image_shape, count, gt_class_ids, gt_boxes):
-    """Generates ROI proposals similar to what a region proposal network
-    would generate.
+    """領域提案ネットワークが生成するようなROI提案を生成する。
 
     image_shape: [Height, Width, Depth]
-    count: Number of ROIs to generate
-    gt_class_ids: [N] Integer ground truth class IDs
-    gt_boxes: [N, (y1, x1, y2, x2)] Ground truth boxes in pixels.
+    count: 生成するROIの数
+    gt_class_ids: [N] 整数型の正解クラスID
+    gt_boxes: [N, (y1, x1, y2, x2)] ピクセル単位の正解ボックス。
 
-    Returns: [count, (y1, x1, y2, x2)] ROI boxes in pixels.
+    Returns: [count, (y1, x1, y2, x2)] ピクセル単位のROIボックス。
     """
-    # placeholder
+    # プレースホルダー
     rois = np.zeros((count, 4), dtype=np.int32)
 
-    # Generate random ROIs around GT boxes (90% of count)
+    # GTボックス周辺にランダムなROIを生成（countの90%）
     rois_per_box = int(0.9 * count / gt_boxes.shape[0])
     for i in range(gt_boxes.shape[0]):
         gt_y1, gt_x1, gt_y2, gt_x2 = gt_boxes[i]
         h = gt_y2 - gt_y1
         w = gt_x2 - gt_x1
-        # random boundaries
+        # ランダムな境界
         r_y1 = max(gt_y1 - h, 0)
         r_y2 = min(gt_y2 + h, image_shape[0])
         r_x1 = max(gt_x1 - w, 0)
         r_x2 = min(gt_x2 + w, image_shape[1])
 
-        # To avoid generating boxes with zero area, we generate double what
-        # we need and filter out the extra. If we get fewer valid boxes
-        # than we need, we loop and try again.
+        # 面積ゼロのボックスの生成を防ぐため、必要な数の2倍を生成して
+        # 余分をフィルタリング。必要な数よりも有効なボックスが少ない場合、
+        # ループして再試行。
         while True:
             y1y2 = np.random.randint(r_y1, r_y2, (rois_per_box * 2, 2))
             x1x2 = np.random.randint(r_x1, r_x2, (rois_per_box * 2, 2))
-            # Filter out zero area boxes
+            # ゼロ面積ボックスをフィルタリング
             threshold = 1
             y1y2 = y1y2[np.abs(y1y2[:, 0] - y1y2[:, 1]) >=
                         threshold][:rois_per_box]
@@ -1595,22 +1574,22 @@ def generate_random_rois(image_shape, count, gt_class_ids, gt_boxes):
             if y1y2.shape[0] == rois_per_box and x1x2.shape[0] == rois_per_box:
                 break
 
-        # Sort on axis 1 to ensure x1 <= x2 and y1 <= y2 and then reshape
-        # into x1, y1, x2, y2 order
+        # 軸1でソートしてx1 <= x2おy1 <= y2を保証し、その後
+        # x1, y1, x2, y2の順序に再整形
         x1, x2 = np.split(np.sort(x1x2, axis=1), 2, axis=1)
         y1, y2 = np.split(np.sort(y1y2, axis=1), 2, axis=1)
         box_rois = np.hstack([y1, x1, y2, x2])
         rois[rois_per_box * i:rois_per_box * (i + 1)] = box_rois
 
-    # Generate random ROIs anywhere in the image (10% of count)
+    # 画像内のどこにでもランダムなROIを生成（カウントの10%）
     remaining_count = count - (rois_per_box * gt_boxes.shape[0])
-    # To avoid generating boxes with zero area, we generate double what
-    # we need and filter out the extra. If we get fewer valid boxes
-    # than we need, we loop and try again.
+    # ゼロ面積ボックスの生成を避けるため、必要な分の2倍を生成し
+    # 余分をフィルタリング。必要な分より少ない有効ボックスしか得られない場合は
+    # ループして再試行。
     while True:
         y1y2 = np.random.randint(0, image_shape[0], (remaining_count * 2, 2))
         x1x2 = np.random.randint(0, image_shape[1], (remaining_count * 2, 2))
-        # Filter out zero area boxes
+        # ゼロ面積ボックスをフィルタリング
         threshold = 1
         y1y2 = y1y2[np.abs(y1y2[:, 0] - y1y2[:, 1]) >=
                     threshold][:remaining_count]
@@ -1619,8 +1598,8 @@ def generate_random_rois(image_shape, count, gt_class_ids, gt_boxes):
         if y1y2.shape[0] == remaining_count and x1x2.shape[0] == remaining_count:
             break
 
-    # Sort on axis 1 to ensure x1 <= x2 and y1 <= y2 and then reshape
-    # into x1, y1, x2, y2 order
+    # 軸1でソートしてx1 <= x2おy1 <= y2を保証し、その後
+    # x1, y1, x2, y2の順序に再整形
     x1, x2 = np.split(np.sort(x1x2, axis=1), 2, axis=1)
     y1, y2 = np.split(np.sort(y1y2, axis=1), 2, axis=1)
     global_rois = np.hstack([y1, x1, y2, x2])
@@ -1631,45 +1610,43 @@ def generate_random_rois(image_shape, count, gt_class_ids, gt_boxes):
 def data_generator(dataset, config, shuffle=True, augment=False, augmentation=None,
                    random_rois=0, batch_size=1, detection_targets=False,
                    no_augmentation_sources=None):
-    """A generator that returns images and corresponding target class ids,
-    bounding box deltas, and masks.
+    """画像と対応するターゲットクラスID、
+    バウンディングボックスデルタ、およびマスクを返すジェネレーター。
 
-    dataset: The Dataset object to pick data from
-    config: The model config object
-    shuffle: If True, shuffles the samples before every epoch
-    augment: (deprecated. Use augmentation instead). If true, apply random
-        image augmentation. Currently, only horizontal flipping is offered.
-    augmentation: Optional. An imgaug (https://github.com/aleju/imgaug) augmentation.
-        For example, passing imgaug.augmenters.Fliplr(0.5) flips images
-        right/left 50% of the time.
-    random_rois: If > 0 then generate proposals to be used to train the
-                 network classifier and mask heads. Useful if training
-                 the Mask RCNN part without the RPN.
-    batch_size: How many images to return in each call
-    detection_targets: If True, generate detection targets (class IDs, bbox
-        deltas, and masks). Typically for debugging or visualizations because
-        in trainig detection targets are generated by DetectionTargetLayer.
-    no_augmentation_sources: Optional. List of sources to exclude for
-        augmentation. A source is string that identifies a dataset and is
-        defined in the Dataset class.
+    dataset: データを取得するためのDatasetオブジェクト
+    config: モデル設定オブジェクト
+    shuffle: Trueの場合、各エポック前にサンプルをシャッフルする
+    augment: (非推奨。代わりにaugmentationを使用)。trueの場合、ランダムな
+        画像拡張を適用。現在は水平反転のみ提供。
+    augmentation: オプション。imgaug (https://github.com/aleju/imgaug) 拡張。
+        例えば、imgaug.augmenters.Fliplr(0.5)を渡すことで50%の確王で画像を
+        左右反転させる。
+    random_rois: 0より大きい場合、ネットワーク分類器とマスクヘッドの訓練に
+                 使用する提案を生成。RPNなしでMask RCNN部分を訓練する場合に有用。
+    batch_size: 各呼び出しで返す画像数
+    detection_targets: Trueの場合、検出ターゲット(クラスID、bbox
+        デルタ、マスク)を生成。通常はデバッグや可視化用で、訓練時は
+        検出ターゲットはDetectionTargetLayerで生成される。
+    no_augmentation_sources: オプション。拡張から除外するソースのリスト。
+        ソースはデータセットを識別する文字列で、Datasetクラスで定義される。
 
-    Returns a Python generator. Upon calling next() on it, the
-    generator returns two lists, inputs and outputs. The contents
-    of the lists differs depending on the received arguments:
-    inputs list:
+    Pythonジェネレーターを返す。next()を呼び出すと、
+    ジェネレーターはinputsとoutputsの2つのリストを返す。リストの内容は
+    受け取った引数によって異なる:
+    inputsリスト:
     - images: [batch, H, W, C]
-    - image_meta: [batch, (meta data)] Image details. See compose_image_meta()
-    - rpn_match: [batch, N] Integer (1=positive anchor, -1=negative, 0=neutral)
-    - rpn_bbox: [batch, N, (dy, dx, log(dh), log(dw))] Anchor bbox deltas.
-    - gt_class_ids: [batch, MAX_GT_INSTANCES] Integer class IDs
+    - image_meta: [batch, (メタデータ)] 画像詳細。compose_image_meta()を参照
+    - rpn_match: [batch, N] 整数 (1=ポジティブアンカー, -1=ネガティブ, 0=ニュートラル)
+    - rpn_bbox: [batch, N, (dy, dx, log(dh), log(dw))] アンカーbboxデルタ。
+    - gt_class_ids: [batch, MAX_GT_INSTANCES] 整数型クラスID
     - gt_boxes: [batch, MAX_GT_INSTANCES, (y1, x1, y2, x2)]
-    - gt_masks: [batch, height, width, MAX_GT_INSTANCES]. The height and width
-                are those of the image unless use_mini_mask is True, in which
-                case they are defined in MINI_MASK_SHAPE.
+    - gt_masks: [batch, height, width, MAX_GT_INSTANCES]。高さと幅は
+                use_mini_maskがTrueでない場合は画像のもので、Trueの場合は
+                MINI_MASK_SHAPEで定義される。
 
-    outputs list: Usually empty in regular training. But if detection_targets
-        is True then the outputs list contains target class_ids, bbox deltas,
-        and masks.
+    outputsリスト: 通常の訓練では通常空。しかしdetection_targetsが
+        Trueの場合、outputsリストにはターゲットclass_ids、bboxデルタ、
+        マスクが含まれる。
     """
     b = 0  # batch item index
     image_index = -1
@@ -1677,7 +1654,7 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
     error_count = 0
     no_augmentation_sources = no_augmentation_sources or []
 
-    # Anchors
+    # アンカー
     # [anchor_count, (y1, x1, y2, x2)]
     backbone_shapes = compute_backbone_shapes(config, config.IMAGE_SHAPE)
     anchors = utils.generate_pyramid_anchors(config.RPN_ANCHOR_SCALES,
@@ -1686,18 +1663,18 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
                                              config.BACKBONE_STRIDES,
                                              config.RPN_ANCHOR_STRIDE)
 
-    # Keras requires a generator to run indefinitely.
+    # Kerasはジェネレーターが無期限に実行されることを要求します。
     while True:
         try:
-            # Increment index to pick next image. Shuffle if at the start of an epoch.
+            # 次の画像を選ぶためインデックスを増分。エポックの開始時にシャッフル。
             image_index = (image_index + 1) % len(image_ids)
             if shuffle and image_index == 0:
                 np.random.shuffle(image_ids)
 
-            # Get GT bounding boxes and masks for image.
+            # 画像のGTバウンディングボックスとマスクを取得。
             image_id = image_ids[image_index]
 
-            # If the image source is not to be augmented pass None as augmentation
+            # 画像ソースが拡張されない場合、拡張としてNoneを渡す
             if dataset.image_info[image_id]['source'] in no_augmentation_sources:
                 image, image_meta, gt_class_ids, gt_boxes, gt_masks = \
                 load_image_gt(dataset, config, image_id, augment=augment,
@@ -1709,17 +1686,16 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
                                 augmentation=augmentation,
                                 use_mini_mask=config.USE_MINI_MASK)
 
-            # Skip images that have no instances. This can happen in cases
-            # where we train on a subset of classes and the image doesn't
-            # have any of the classes we care about.
+            # インスタンスを持たない画像をスキップ。これはクラスのサブセットで
+            # 訓練し、画像に気にするクラスが含まれていない場合に発生する。
             if not np.any(gt_class_ids > 0):
                 continue
 
-            # RPN Targets
+            # RPNターゲット
             rpn_match, rpn_bbox = build_rpn_targets(image.shape, anchors,
                                                     gt_class_ids, gt_boxes, config)
 
-            # Mask R-CNN Targets
+            # Mask R-CNNターゲット
             if random_rois:
                 rpn_rois = generate_random_rois(
                     image.shape, random_rois, gt_class_ids, gt_boxes)
@@ -1728,7 +1704,7 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
                         build_detection_targets(
                             rpn_rois, gt_class_ids, gt_boxes, gt_masks, config)
 
-            # Init batch arrays
+            # バッチ配列を初期化
             if b == 0:
                 batch_image_meta = np.zeros(
                     (batch_size,) + image_meta.shape, dtype=image_meta.dtype)
@@ -1758,7 +1734,7 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
                         batch_mrcnn_mask = np.zeros(
                             (batch_size,) + mrcnn_mask.shape, dtype=mrcnn_mask.dtype)
 
-            # If more instances than fits in the array, sub-sample from them.
+            # 配列に入りきらないインスタンスがある場合、それらからサブサンプル。
             if gt_boxes.shape[0] > config.MAX_GT_INSTANCES:
                 ids = np.random.choice(
                     np.arange(gt_boxes.shape[0]), config.MAX_GT_INSTANCES, replace=False)
@@ -1766,7 +1742,7 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
                 gt_boxes = gt_boxes[ids]
                 gt_masks = gt_masks[:, :, ids]
 
-            # Add to batch
+            # バッチに追加
             batch_image_meta[b] = image_meta
             batch_rpn_match[b] = rpn_match[:, np.newaxis]
             batch_rpn_bbox[b] = rpn_bbox
@@ -1783,7 +1759,7 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
                     batch_mrcnn_mask[b] = mrcnn_mask
             b += 1
 
-            # Batch full?
+            # バッチは満杯か？
             if b >= batch_size:
                 inputs = [batch_images, batch_image_meta, batch_rpn_match, batch_rpn_bbox,
                           batch_gt_class_ids, batch_gt_boxes, batch_gt_masks]
@@ -1793,7 +1769,7 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
                     inputs.extend([batch_rpn_rois])
                     if detection_targets:
                         inputs.extend([batch_rois])
-                        # Keras requires that output and targets have the same number of dimensions
+                        # Kerasはoutputとtargetsが同じ次元数を持つことを要求する
                         batch_mrcnn_class_ids = np.expand_dims(
                             batch_mrcnn_class_ids, -1)
                         outputs.extend(
@@ -1806,8 +1782,8 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
         except (GeneratorExit, KeyboardInterrupt):
             raise
         except:
-            # Log it and skip the image
-            logging.exception("Error processing image {}".format(
+            # ログを出力して画像をスキップ
+            logging.exception("画像処理エラー {}".format(
                 dataset.image_info[image_id]))
             error_count += 1
             if error_count > 5:
@@ -1815,20 +1791,20 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
 
 
 ############################################################
-#  MaskRCNN Class
+#  MaskRCNNクラス
 ############################################################
 
 class MaskRCNN():
-    """Encapsulates the Mask RCNN model functionality.
+    """Mask RCNNモデルの機能をカプセル化する。
 
-    The actual Keras model is in the keras_model property.
+    実際Kerasモデルはkeras_modelプロパティにある。
     """
 
     def __init__(self, mode, config, model_dir):
         """
-        mode: Either "training" or "inference"
-        config: A Sub-class of the Config class
-        model_dir: Directory to save training logs and trained weights
+        mode: "training"または"inference"
+        config: Configクラスのサブクラス
+        model_dir: 訓練ログと訓練済み重みを保存するディレクトリ
         """
         assert mode in ['training', 'inference']
         self.mode = mode
@@ -1838,47 +1814,53 @@ class MaskRCNN():
         self.keras_model = self.build(mode=mode, config=config)
 
     def build(self, mode, config):
-        """Build Mask R-CNN architecture.
-            input_shape: The shape of the input image.
-            mode: Either "training" or "inference". The inputs and
-                outputs of the model differ accordingly.
+        """Mask R-CNNアーキテクチャを構築する。
+            input_shape: 入力画像の形状。
+            mode: "training"または"inference"。モデルの入力と
+                出力はそれに応じて異なる。
         """
         assert mode in ['training', 'inference']
 
-        # Image size must be dividable by 2 multiple times
+        # 画像サイズは2で何度も割り切れる必要がある
         h, w = config.IMAGE_SHAPE[:2]
         if h / 2**6 != int(h / 2**6) or w / 2**6 != int(w / 2**6):
-            raise Exception("Image size must be dividable by 2 at least 6 times "
-                            "to avoid fractions when downscaling and upscaling."
-                            "For example, use 256, 320, 384, 448, 512, ... etc. ")
+            raise Exception("画像サイズは少なくとも6回、2で割り切れる必要があります。"
+                            "ダウンスケーリングとアップスケーリング時の端数を避けるためです。"
+                            "例: 256, 320, 384, 448, 512等を使用してください。")
 
-        # Inputs
+        # 入力
         input_image = KL.Input(
             shape=[None, None, config.IMAGE_SHAPE[2]], name="input_image")
         input_image_meta = KL.Input(shape=[config.IMAGE_META_SIZE],
                                     name="input_image_meta")
         if mode == "training":
             # RPN GT
+            # Region Proposal Network、画像のどこに物体がありそうかを大まかに特定
             input_rpn_match = KL.Input(
                 shape=[None, 1], name="input_rpn_match", dtype=tf.int32)
+            # バウンディングボックス回帰ターゲット
+            # アンカーを「どのくらい」「どの方向に」動かせば正解になるかを学習するためのターゲット値
+            # アンカーは事前に定義された固定サイズのボックス
             input_rpn_bbox = KL.Input(
                 shape=[None, 4], name="input_rpn_bbox", dtype=tf.float32)
 
-            # Detection GT (class IDs, bounding boxes, and masks)
-            # 1. GT Class IDs (zero padded)
+            # 検出 GT (クラスID、バウンディングボックス、マスク)
+            # 1. GTクラスID (ゼロパディング)
             input_gt_class_ids = KL.Input(
                 shape=[None], name="input_gt_class_ids", dtype=tf.int32)
-            # 2. GT Boxes in pixels (zero padded)
-            # [batch, MAX_GT_INSTANCES, (y1, x1, y2, x2)] in image coordinates
+            # 2. ピクセル単位のGTボックス (ゼロパディング)
+            # [batch, MAX_GT_INSTANCES, (y1, x1, y2, x2)] 画像座標系
             input_gt_boxes = KL.Input(
                 shape=[None, 4], name="input_gt_boxes", dtype=tf.float32)
-            # Normalize coordinates
+            # 座標を正規化
             # 1. gt_boxes
             gt_boxes = KL.Lambda(
+                # ボックスを正規化して数値安定化と学習を効率化
                 lambda x: norm_boxes_graph(x, K.shape(input_image)[1:3]),
                 output_shape=lambda s: s
             )(input_gt_boxes)
-            # 3. GT Masks (zero padded)
+            # 3. GTマスク (ゼロパディング)
+            # インスタンスセグメンテーション用の正解マスクデータ
             # [batch, height, width, MAX_GT_INSTANCES]
             if config.USE_MINI_MASK:
                 input_gt_masks = KL.Input(
@@ -1890,20 +1872,20 @@ class MaskRCNN():
                     shape=[config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1], None],
                     name="input_gt_masks", dtype=bool)
         elif mode == "inference":
-            # Anchors in normalized coordinates
+            # 正規化座標のアンカー
             input_anchors = KL.Input(shape=[None, 4], name="input_anchors")
 
-        # Build the shared convolutional layers.
-        # Bottom-up Layers
-        # Returns a list of the last layers of each stage, 5 in total.
-        # Don't create the thead (stage 5), so we pick the 4th item in the list.
+        # 共有畳み込みレイヤーを構築。
+        # ボトムアップレイヤー
+        # 各ステージの最後のレイヤーのリストを返す、合計5つ。
+        # ヘッド(stage 5)を作成しないため、リストの4番目の項目を選択。
         if callable(config.BACKBONE):
             _, C2, C3, C4, C5 = config.BACKBONE(input_image, stage5=True,
                                                 train_bn=config.TRAIN_BN)
         else:
             _, C2, C3, C4, C5 = resnet_graph(input_image, config.BACKBONE,
                                              stage5=True, train_bn=config.TRAIN_BN)
-        # Top-down Layers
+        # トップダウンレイヤー
         # TODO: add assert to varify feature map sizes match what's in config
         P5 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (1, 1), name='fpn_c5p5')(C5)
         P4 = KL.Add(name="fpn_p4add")([
@@ -1915,26 +1897,26 @@ class MaskRCNN():
         P2 = KL.Add(name="fpn_p2add")([
             KL.UpSampling2D(size=(2, 2), name="fpn_p3upsampled")(P3),
             KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (1, 1), name='fpn_c2p2')(C2)])
-        # Attach 3x3 conv to all P layers to get the final feature maps.
+        # 最終特徴マップを得るため、全てのPレイヤーに3x3 convをアタッチ。
         P2 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (3, 3), padding="SAME", name="fpn_p2")(P2)
         P3 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (3, 3), padding="SAME", name="fpn_p3")(P3)
         P4 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (3, 3), padding="SAME", name="fpn_p4")(P4)
         P5 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (3, 3), padding="SAME", name="fpn_p5")(P5)
-        # P6 is used for the 5th anchor scale in RPN. Generated by
-        # subsampling from P5 with stride of 2.
+        # P6はRPNの5番目のアンカースケールに使用。stride 2で
+        # P5からサブサンプリングして生成。
         P6 = KL.MaxPooling2D(pool_size=(1, 1), strides=2, name="fpn_p6")(P5)
 
-        # Note that P6 is used in RPN, but not in the classifier heads.
+        # P6はRPNで使用されるが、分類器ヘッドでは使用されないことに注意。
         rpn_feature_maps = [P2, P3, P4, P5, P6]
         mrcnn_feature_maps = [P2, P3, P4, P5]
 
         # Anchors
         if mode == "training":
             anchors = self.get_anchors(config.IMAGE_SHAPE)
-            # Duplicate across the batch dimension because Keras requires it
-            # TODO: can this be optimized to avoid duplicating the anchors?
+            # Kerasが必要とするため、バッチ次元で複製
+            # TODO: アンカーの複製を避けるように最適化できるか？
             anchors = np.broadcast_to(anchors, (config.BATCH_SIZE,) + anchors.shape)
-            # A hack to get around Keras's bad support for constants
+            # Kerasの定数に対する悪いサポートを回避するハック
             anchors = KL.Lambda(
                 lambda x: tf.convert_to_tensor(anchors, dtype=tf.float32),  # tf.Variable → convert_to_tensor で安全に定数化
                 output_shape=lambda s: anchors.shape,
@@ -1943,17 +1925,17 @@ class MaskRCNN():
         else:
             anchors = input_anchors
 
-        # RPN Model
+        # RPNモデル
         rpn = build_rpn_model(config.RPN_ANCHOR_STRIDE,
                               len(config.RPN_ANCHOR_RATIOS), config.TOP_DOWN_PYRAMID_SIZE)
-        # Loop through pyramid layers
+        # ピラミッドレイヤーをループ
         layer_outputs = []  # list of lists
         for p in rpn_feature_maps:
             layer_outputs.append(rpn([p]))
-        # Concatenate layer outputs
-        # Convert from list of lists of level outputs to list of lists
-        # of outputs across levels.
-        # e.g. [[a1, b1, c1], [a2, b2, c2]] => [[a1, a2], [b1, b2], [c1, c2]]
+        # レイヤー出力を連結
+        # レベル出力のリストのリストからレベルを横断する出力の
+        # リストのリストに変換。
+        # 例: [[a1, b1, c1], [a2, b2, c2]] => [[a1, a2], [b1, b2], [c1, c2]]
         output_names = ["rpn_class_logits", "rpn_class", "rpn_bbox"]
         outputs = list(zip(*layer_outputs))
         outputs = [KL.Concatenate(axis=1, name=n)(list(o))
@@ -1961,9 +1943,9 @@ class MaskRCNN():
 
         rpn_class_logits, rpn_class, rpn_bbox = outputs
 
-        # Generate proposals
-        # Proposals are [batch, N, (y1, x1, y2, x2)] in normalized coordinates
-        # and zero padded.
+        # 提案を生成
+        # 提案は[batch, N, (y1, x1, y2, x2)]の正規化座標で
+        # ゼロパディングされている。
         proposal_count = config.POST_NMS_ROIS_TRAINING if mode == "training"\
             else config.POST_NMS_ROIS_INFERENCE
         rpn_rois = ProposalLayer(
@@ -1973,33 +1955,33 @@ class MaskRCNN():
             config=config)([rpn_class, rpn_bbox, anchors])
 
         if mode == "training":
-            # Class ID mask to mark class IDs supported by the dataset the image
-            # came from.
+            # 画像が由来するデータセットでサポートされるクラスIDをマークする
+            # クラスIDマスク。
             active_class_ids = KL.Lambda(
                 lambda x: parse_image_meta_graph(x)["active_class_ids"],
                 output_shape=lambda s: (s[0], None))(input_image_meta)
 
             if not config.USE_RPN_ROIS:
-                # Ignore predicted ROIs and use ROIs provided as an input.
+                # 予測されたROIを無視し、入力として提供されたROIを使用。
                 input_rois = KL.Input(shape=[config.POST_NMS_ROIS_TRAINING, 4],
                                       name="input_roi", dtype=np.int32)
-                # Normalize coordinates
+                # 座標を正規化
                 target_rois = KL.Lambda(lambda x: norm_boxes_graph(
                     x, K.shape(input_image)[1:3]),
                     output_shape=lambda s: s)(input_rois)
             else:
                 target_rois = rpn_rois
 
-            # Generate detection targets
-            # Subsamples proposals and generates target outputs for training
-            # Note that proposal class IDs, gt_boxes, and gt_masks are zero
-            # padded. Equally, returned rois and targets are zero padded.
+            # 検出ターゲットを生成
+            # 提案をサブサンプルし、訓練用のターゲット出力を生成
+            # 提案クラスID、gt_boxes、gt_masksはゼロパディングされていることに注意。
+            # 同様に、返されるroisとtargetsもゼロパディングされている。
             rois, target_class_ids, target_bbox, target_mask =\
                 DetectionTargetLayer(config, name="proposal_targets")([
                     target_rois, input_gt_class_ids, gt_boxes, input_gt_masks])
 
-            # Network Heads
-            # TODO: verify that this handles zero padded ROIs
+            # ネットワークヘッド
+            # TODO: これがゼロパディングされたROIを適切に処理するか確認
             mrcnn_class_logits, mrcnn_class, mrcnn_bbox =\
                 fpn_classifier_graph(rois, mrcnn_feature_maps, input_image_meta,
                                      config.POOL_SIZE, config.NUM_CLASSES,
@@ -2012,12 +1994,12 @@ class MaskRCNN():
                                               config.NUM_CLASSES,
                                               train_bn=config.TRAIN_BN)
 
-            # TODO: clean up (use tf.identify if necessary)
+            # TODO: クリーンアップ (必要に応じてtf.identifyを使用)
             output_rois = KL.Lambda(lambda x: x * 1,
                                    output_shape=lambda s: s,
                                    name="output_rois")(rois)
 
-            # Losses
+            # 損失es
             rpn_class_loss = KL.Lambda(lambda x: rpn_class_loss_graph(*x),
                                       output_shape=lambda s: (),
                                       name="rpn_class_loss")(
@@ -2039,7 +2021,7 @@ class MaskRCNN():
                                  name="mrcnn_mask_loss")(
                 [target_mask, target_class_ids, mrcnn_mask])
 
-            # Model
+            # モデル
             inputs = [input_image, input_image_meta,
                       input_rpn_match, input_rpn_bbox, input_gt_class_ids, input_gt_boxes, input_gt_masks]
             if not config.USE_RPN_ROIS:
@@ -2050,21 +2032,21 @@ class MaskRCNN():
                        rpn_class_loss, rpn_bbox_loss, class_loss, bbox_loss, mask_loss]
             model = KM.Model(inputs, outputs, name='mask_rcnn')
         else:
-            # Network Heads
-            # Proposal classifier and BBox regressor heads
+            # ネットワークヘッド
+            # 提案分類器およびBBox回帰ヘッド
             mrcnn_class_logits, mrcnn_class, mrcnn_bbox =\
                 fpn_classifier_graph(rpn_rois, mrcnn_feature_maps, input_image_meta,
                                      config.POOL_SIZE, config.NUM_CLASSES,
                                      train_bn=config.TRAIN_BN,
                                      fc_layers_size=config.FPN_CLASSIF_FC_LAYERS_SIZE)
 
-            # Detections
-            # output is [batch, num_detections, (y1, x1, y2, x2, class_id, score)] in
-            # normalized coordinates
+            # 検出
+            # 出力は[batch, num_detections, (y1, x1, y2, x2, class_id, score)]で
+            # 正規化座標
             detections = DetectionLayer(config, name="mrcnn_detection")(
                 [rpn_rois, mrcnn_class, mrcnn_bbox, input_image_meta])
 
-            # Create masks for detections
+            # 検出結果用のマスクを作成
             detection_boxes = KL.Lambda(lambda x: x[..., :4],
                                        output_shape=lambda s: (s[0], s[1], 4))(detections)
             mrcnn_mask = build_fpn_mask_graph(detection_boxes, mrcnn_feature_maps,
@@ -2078,7 +2060,7 @@ class MaskRCNN():
                                  mrcnn_mask, rpn_rois, rpn_class, rpn_bbox],
                              name='mask_rcnn')
 
-        # Add multi-GPU support.
+        # マルチGPUサポートを追加。
         if config.GPU_COUNT > 1:
             from mrcnn.parallel_model import ParallelModel
             model = ParallelModel(model, config.GPU_COUNT)
@@ -2086,12 +2068,11 @@ class MaskRCNN():
         return model
 
     def find_last(self):
-        """Finds the last checkpoint file of the last trained model in the
-        model directory.
+        """モデルディレクトリ内の最後に訓練されたモデルの最後のチェックポイントファイルを検索。
         Returns:
-            The path of the last checkpoint file
+            最後のチェックポイントファイルのパス
         """
-        # Get directory names. Each directory corresponds to a model
+        # ディレクトリ名を取得。各ディレクトリはモデルに対応
         dir_names = next(os.walk(self.model_dir))[1]
         key = self.config.NAME.lower()
         dir_names = filter(lambda f: f.startswith(key), dir_names)
@@ -2100,35 +2081,34 @@ class MaskRCNN():
             import errno
             raise FileNotFoundError(
                 errno.ENOENT,
-                "Could not find model directory under {}".format(self.model_dir))
-        # Pick last directory
+                "{}でモデルディレクトリが見つかりませんでした".format(self.model_dir))
+        # 最後のディレクトリを選択
         dir_name = os.path.join(self.model_dir, dir_names[-1])
-        # Find the last checkpoint
+        # 最後のチェックポイントを検索
         checkpoints = next(os.walk(dir_name))[2]
         checkpoints = filter(lambda f: f.startswith("mask_rcnn"), checkpoints)
         checkpoints = sorted(checkpoints)
         if not checkpoints:
             import errno
             raise FileNotFoundError(
-                errno.ENOENT, "Could not find weight files in {}".format(dir_name))
+                errno.ENOENT, "{}で重みファイルが見つかりませんでした".format(dir_name))
         checkpoint = os.path.join(dir_name, checkpoints[-1])
         return checkpoint
 
     def load_weights(self, filepath, by_name=False, exclude=None):
-        """Modified version of the corresponding Keras function with
-        the addition of multi-GPU support and the ability to exclude
-        some layers from loading.
-        exclude: list of layer names to exclude
+        """対応するKeras関数の改変版。
+        マルチGPUサポートと一部のレイヤーを読み込みから除外する機能を追加。
+        exclude: 除外するレイヤー名のリスト
         """
         import h5py
-        # Import for TensorFlow 2.x / Keras integrated
+        # TensorFlow 2.x / Keras統合用のインポート
         try:
             from tensorflow.python.keras.saving import hdf5_format as saving
         except ImportError:
             try:
                 from keras.engine import saving
             except ImportError:
-                # Keras before 2.2 used the 'topology' namespace.
+                # Keras 2.2以前は'topology'名前空間を使用した。
                 from keras.engine import topology as saving
 
         if exclude:
@@ -2140,13 +2120,13 @@ class MaskRCNN():
         if 'layer_names' not in f.attrs and 'model_weights' in f:
             f = f['model_weights']
 
-        # In multi-GPU training, we wrap the model. Get layers
-        # of the inner model because they have the weights.
+        # マルチGPU訓練では、モデルをラップする。重みを持つ
+        # 内部モデルのレイヤーを取得。
         keras_model = self.keras_model
         layers = keras_model.inner_model.layers if hasattr(keras_model, "inner_model")\
             else keras_model.layers
 
-        # Exclude some layers
+        # 一部のレイヤーを除外
         if exclude:
             layers = filter(lambda l: l.name not in exclude, layers)
 
@@ -2157,12 +2137,12 @@ class MaskRCNN():
         if hasattr(f, 'close'):
             f.close()
 
-        # Update the log directory
+        # ログディレクトリを更新
         self.set_log_dir(filepath)
 
     def get_imagenet_weights(self):
-        """Downloads ImageNet trained weights from Keras.
-        Returns path to weights file.
+        """KerasからImageNet訓練済み重みをダウンロード。
+        重みファイルのパスを返す。
         """
         try:
             from tensorflow.keras.utils import get_file
@@ -2178,15 +2158,15 @@ class MaskRCNN():
         return weights_path
 
     def compile(self, learning_rate, momentum):
-        """Gets the model ready for training. Adds losses, regularization, and
-        metrics. Then calls the Keras compile() function.
+        """モデルを訓練のために準備。損失、正則化、メトリクスを追加。
+        その後、Kerasのcompile()関数を呼び出す。
         """
-        # Optimizer object
+        # オプティマイザーオブジェクト
         optimizer = keras.optimizers.SGD(
             lr=learning_rate, momentum=momentum,
             clipnorm=self.config.GRADIENT_CLIP_NORM)
-        # Add Losses
-        # First, clear previously set losses to avoid duplication
+        # 損失を追加
+        # まず、重複を避けるために以前に設定された損失をクリア
         self.keras_model._losses = []
         self.keras_model._per_input_losses = {}
         loss_names = [
@@ -2201,20 +2181,20 @@ class MaskRCNN():
                 * self.config.LOSS_WEIGHTS.get(name, 1.))
             self.keras_model.add_loss(loss)
 
-        # Add L2 Regularization
-        # Skip gamma and beta weights of batch normalization layers.
+        # L2正則化を追加
+        # バッチ正規化レイヤーのgammaとbeta重みをスキップ。
         reg_losses = [
             keras.regularizers.l2(self.config.WEIGHT_DECAY)(w) / tf.cast(tf.size(w), tf.float32)
             for w in self.keras_model.trainable_weights
             if 'gamma' not in w.name and 'beta' not in w.name]
         self.keras_model.add_loss(tf.add_n(reg_losses))
 
-        # Compile
+        # コンパイル
         self.keras_model.compile(
             optimizer=optimizer,
             loss=[None] * len(self.keras_model.outputs))
 
-        # Add metrics for losses
+        # 損失用のメトリクスを追加
         for name in loss_names:
             if name in self.keras_model.metrics_names:
                 continue
@@ -2226,58 +2206,56 @@ class MaskRCNN():
             self.keras_model.metrics_tensors.append(loss)
 
     def set_trainable(self, layer_regex, keras_model=None, indent=0, verbose=1):
-        """Sets model layers as trainable if their names match
-        the given regular expression.
+        """正規表現にマッチする名前のモデルレイヤーを訓練可能に設定する。
         """
-        # Print message on the first call (but not on recursive calls)
+        # 最初の呼び出しでメッセージを出力（再帰呼び出しではない）
         if verbose > 0 and keras_model is None:
-            log("Selecting layers to train")
+            log("訓練するレイヤーを選択中")
 
         keras_model = keras_model or self.keras_model
 
-        # In multi-GPU training, we wrap the model. Get layers
-        # of the inner model because they have the weights.
+        # マルチGPU訓練では、モデルをラップする。重みを持つ
+        # 内部モデルのレイヤーを取得。
         layers = keras_model.inner_model.layers if hasattr(keras_model, "inner_model")\
             else keras_model.layers
 
         for layer in layers:
-            # Is the layer a model?
+            # レイヤーはモデルか？
             if layer.__class__.__name__ == 'Model':
-                print("In model: ", layer.name)
+                print("モデル内: ", layer.name)
                 self.set_trainable(
                     layer_regex, keras_model=layer, indent=indent + 4)
                 continue
 
             if not layer.weights:
                 continue
-            # Is it trainable?
+            # 訓練可能か？
             trainable = bool(re.fullmatch(layer_regex, layer.name))
-            # Update layer. If layer is a container, update inner layer.
+            # レイヤーを更新。レイヤーがコンテナの場合、内部レイヤーを更新。
             if layer.__class__.__name__ == 'TimeDistributed':
                 layer.layer.trainable = trainable
             else:
                 layer.trainable = trainable
-            # Print trainable layer names
+            # 訓練可能レイヤー名を出力
             if trainable and verbose > 0:
                 log("{}{:20}   ({})".format(" " * indent, layer.name,
                                             layer.__class__.__name__))
 
     def set_log_dir(self, model_path=None):
-        """Sets the model log directory and epoch counter.
+        """モデルのログディレクトリとエポックカウンターを設定する。
 
-        model_path: If None, or a format different from what this code uses
-            then set a new log directory and start epochs from 0. Otherwise,
-            extract the log directory and the epoch counter from the file
-            name.
+        model_path: Noneまたはこのコードが使用する形式と異なる場合、
+            新しいログディレクトリを設定しエポックを0から開始。そうでない場合、
+            ファイル名からログディレクトリとエポックカウンターを抽出。
         """
-        # Set date and epoch counter as if starting a new model
+        # 新しいモデルを開始するかのように日付とエポックカウンターを設定
         self.epoch = 0
         now = datetime.datetime.now()
 
-        # If we have a model path with date and epochs use them
+        # 日付とエポックを含むモデルパスがある場合はそれらを使用
         if model_path:
-            # Continue from we left of. Get epoch and date from the file name
-            # A sample model path might look like:
+            # 中断したところから続行。ファイル名からエポックと日付を取得
+            # モデルパスの例:
             # \path\to\logs\coco20171029T2315\mask_rcnn_coco_0001.h5 (Windows)
             # /path/to/logs/coco20171029T2315/mask_rcnn_coco_0001.h5 (Linux)
             regex = r".*[/\\][\w-]+(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})[/\\]mask\_rcnn\_[\w-]+(\d{4})\.h5"
@@ -2285,16 +2263,16 @@ class MaskRCNN():
             if m:
                 now = datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
                                         int(m.group(4)), int(m.group(5)))
-                # Epoch number in file is 1-based, and in Keras code it's 0-based.
-                # So, adjust for that then increment by one to start from the next epoch
+                # ファイル内のエポック番号は1ベースで、Kerasコードでは0ベース。
+                # そのため調整し、次のエポックから開始するために1を加算
                 self.epoch = int(m.group(6)) - 1 + 1
                 print('Re-starting from epoch %d' % self.epoch)
 
-        # Directory for training logs
+        # 訓練ログ用ディレクトリ
         self.log_dir = os.path.join(self.model_dir, "{}{:%Y%m%dT%H%M}".format(
             self.config.NAME.lower(), now))
 
-        # Path to save after each epoch. Include placeholders that get filled by Keras.
+        # 各エポック後に保存するパス。Kerasによって埋められるプレースホルダーを含む。
         self.checkpoint_path = os.path.join(self.log_dir, "mask_rcnn_{}_*epoch*.h5".format(
             self.config.NAME.lower()))
         self.checkpoint_path = self.checkpoint_path.replace(
@@ -2302,7 +2280,7 @@ class MaskRCNN():
 
     def train(self, train_dataset, val_dataset, learning_rate, epochs, layers,
               augmentation=None, custom_callbacks=None, no_augmentation_sources=None):
-        """Train the model.
+        """モデルを訓練する。
         train_dataset, val_dataset: Training and validation Dataset objects.
         learning_rate: The learning rate to train with
         epochs: Number of training epochs. Note that previous training epochs
@@ -2334,23 +2312,23 @@ class MaskRCNN():
             augmentation. A source is string that identifies a dataset and is
             defined in the Dataset class.
         """
-        assert self.mode == "training", "Create model in training mode."
+        assert self.mode == "training", "モデルを訓練モードで作成してください。"
 
-        # Pre-defined layer regular expressions
+        # 事前定義されたレイヤー正規表現
         layer_regex = {
-            # all layers but the backbone
+            # バックボーン以外のすべてのレイヤー
             "heads": r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)",
-            # From a specific Resnet stage and up
+            # 特定のResnetステージ以上
             "3+": r"(res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)",
             "4+": r"(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)",
             "5+": r"(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)",
-            # All layers
+            # すべてのレイヤー
             "all": ".*",
         }
         if layers in layer_regex.keys():
             layers = layer_regex[layers]
 
-        # Data generators
+        # データジェネレーター
         train_generator = data_generator(train_dataset, self.config, shuffle=True,
                                          augmentation=augmentation,
                                          batch_size=self.config.BATCH_SIZE,
@@ -2358,11 +2336,11 @@ class MaskRCNN():
         val_generator = data_generator(val_dataset, self.config, shuffle=True,
                                        batch_size=self.config.BATCH_SIZE)
 
-        # Create log_dir if it does not exist
+        # 存在しない場合はlog_dirを作成
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
 
-        # Callbacks
+        # コールバック
         callbacks = [
             keras.callbacks.TensorBoard(log_dir=self.log_dir,
                                         histogram_freq=0, write_graph=True, write_images=False),
@@ -2370,18 +2348,18 @@ class MaskRCNN():
                                             verbose=0, save_weights_only=True),
         ]
 
-        # Add custom callbacks to the list
+        # カスタムコールバックをリストに追加
         if custom_callbacks:
             callbacks += custom_callbacks
 
-        # Train
-        log("\nStarting at epoch {}. LR={}\n".format(self.epoch, learning_rate))
-        log("Checkpoint Path: {}".format(self.checkpoint_path))
+        # 訓練
+        log("\nエポック{}で開始。学習率={}\n".format(self.epoch, learning_rate))
+        log("チェックポイントパス: {}".format(self.checkpoint_path))
         self.set_trainable(layers)
         self.compile(learning_rate, self.config.LEARNING_MOMENTUM)
 
-        # Work-around for Windows: Keras fails on Windows when using
-        # multiprocessing workers. See discussion here:
+        # Windows対応: Kerasはマルチプロセッシングワーカーを使用するとWindowsで失敗。
+        # 詳細はここを参照:
         # https://github.com/matterport/Mask_RCNN/issues/13#issuecomment-353124009
         if os.name == 'nt':
             workers = 0
@@ -2403,23 +2381,23 @@ class MaskRCNN():
         self.epoch = max(self.epoch, epochs)
 
     def mold_inputs(self, images):
-        """Takes a list of images and modifies them to the format expected
-        as an input to the neural network.
-        images: List of image matrices [height,width,depth]. Images can have
-            different sizes.
+        """画像のリストを取り、ニューラルネットワークへの入力として
+        期待される形式に変更する。
+        images: 画像行列[height,width,depth]のリスト。画像のサイズは
+            異なっていてもよい。
 
-        Returns 3 Numpy matrices:
-        molded_images: [N, h, w, 3]. Images resized and normalized.
-        image_metas: [N, length of meta data]. Details about each image.
-        windows: [N, (y1, x1, y2, x2)]. The portion of the image that has the
-            original image (padding excluded).
+        3つのNumpy行列を返す:
+        molded_images: [N, h, w, 3]。リサイズおよび正規化された画像。
+        image_metas: [N, メタデータの長さ]。各画像の詳細情報。
+        windows: [N, (y1, x1, y2, x2)]。元の画像を持つ画像の部分
+            （パディングを除く）。
         """
         molded_images = []
         image_metas = []
         windows = []
         for image in images:
-            # Resize image
-            # TODO: move resizing to mold_image()
+            # 画像をリサイズ
+            # TODO: リサイズをmold_image()に移動
             molded_image, window, scale, padding, crop = utils.resize_image(
                 image,
                 min_dim=self.config.IMAGE_MIN_DIM,
@@ -2427,15 +2405,15 @@ class MaskRCNN():
                 max_dim=self.config.IMAGE_MAX_DIM,
                 mode=self.config.IMAGE_RESIZE_MODE)
             molded_image = mold_image(molded_image, self.config)
-            # Build image_meta
+            # image_metaを構築
             image_meta = compose_image_meta(
                 0, image.shape, molded_image.shape, window, scale,
                 np.zeros([self.config.NUM_CLASSES], dtype=np.int32))
-            # Append
+            # 追加
             molded_images.append(molded_image)
             windows.append(window)
             image_metas.append(image_meta)
-        # Pack into arrays
+        # 配列にパック
         molded_images = np.stack(molded_images)
         image_metas = np.stack(image_metas)
         windows = np.stack(windows)
@@ -2443,22 +2421,21 @@ class MaskRCNN():
 
     def unmold_detections(self, detections, mrcnn_mask, original_image_shape,
                           image_shape, window):
-        """Reformats the detections of one image from the format of the neural
-        network output to a format suitable for use in the rest of the
-        application.
+        """一枚の画像の検出結果をニューラルネットワーク出力の形式から
+        アプリケーションの他の部分で使用するのに適した形式に再フォーマットする。
 
-        detections: [N, (y1, x1, y2, x2, class_id, score)] in normalized coordinates
+        detections: [N, (y1, x1, y2, x2, class_id, score)] 正規化座標
         mrcnn_mask: [N, height, width, num_classes]
-        original_image_shape: [H, W, C] Original image shape before resizing
-        image_shape: [H, W, C] Shape of the image after resizing and padding
-        window: [y1, x1, y2, x2] Pixel coordinates of box in the image where the real
-                image is excluding the padding.
+        original_image_shape: [H, W, C] リサイズ前の元の画像形状
+        image_shape: [H, W, C] リサイズおよびパディング後の画像形状
+        window: [y1, x1, y2, x2] パディングを除いた実際の画像がある
+                画像内のボックスのピクセル座標。
 
         Returns:
-        boxes: [N, (y1, x1, y2, x2)] Bounding boxes in pixels
-        class_ids: [N] Integer class IDs for each bounding box
-        scores: [N] Float probability scores of the class_id
-        masks: [height, width, num_instances] Instance masks
+        boxes: [N, (y1, x1, y2, x2)] ピクセル単位のバウンディングボックス
+        class_ids: [N] 各バウンディングボックスの整数型クラスID
+        scores: [N] class_idの浮動小数点確率スコア
+        masks: [height, width, num_instances] インスタンスマスク
         """
         # How many detections do we have?
         # Detections array is padded with zeros. Find the first class_id == 0.
@@ -2507,19 +2484,19 @@ class MaskRCNN():
         return boxes, class_ids, scores, full_masks
 
     def detect(self, images, verbose=0):
-        """Runs the detection pipeline.
+        """検出パイプラインを実行する。
 
-        images: List of images, potentially of different sizes.
+        images: サイズが異なる可能性のある画像のリスト。
 
-        Returns a list of dicts, one dict per image. The dict contains:
-        rois: [N, (y1, x1, y2, x2)] detection bounding boxes
-        class_ids: [N] int class IDs
-        scores: [N] float probability scores for the class IDs
-        masks: [H, W, N] instance binary masks
+        画像ごとに1つずつ辞書を含む辞書のリストを返す。辞書の内容:
+        rois: [N, (y1, x1, y2, x2)] 検出バウンディングボックス
+        class_ids: [N] 整数型クラスID
+        scores: [N] クラスIDの浮動小数点確率スコア
+        masks: [H, W, N] インスタンスバイナリマスク
         """
-        assert self.mode == "inference", "Create model in inference mode."
+        assert self.mode == "inference", "モデルを推論モードで作成してください。"
         assert len(
-            images) == self.config.BATCH_SIZE, "len(images) must be equal to BATCH_SIZE"
+            images) == self.config.BATCH_SIZE, "len(images)はBATCH_SIZEと等しくなければなりません"
 
         if verbose:
             log("Processing {} images".format(len(images)))
@@ -2534,7 +2511,7 @@ class MaskRCNN():
         image_shape = molded_images[0].shape
         for g in molded_images[1:]:
             assert g.shape == image_shape,\
-                "After resizing, all images must have the same size. Check IMAGE_RESIZE_MODE and image sizes."
+                "リサイズ後、すべての画像は同じサイズである必要があります。IMAGE_RESIZE_MODEと画像サイズを確認してください。"
 
         # Anchors
         anchors = self.get_anchors(image_shape)
@@ -2565,22 +2542,21 @@ class MaskRCNN():
         return results
 
     def detect_molded(self, molded_images, image_metas, verbose=0):
-        """Runs the detection pipeline, but expect inputs that are
-        molded already. Used mostly for debugging and inspecting
-        the model.
+        """検出パイプラインを実行するが、すでに成型された入力を期待する。
+        主にデバッグとモデルの検査に使用。
 
-        molded_images: List of images loaded using load_image_gt()
-        image_metas: image meta data, also returned by load_image_gt()
+        molded_images: load_image_gt()を使用して読み込んだ画像のリスト
+        image_metas: 画像メタデータ、load_image_gt()からも返される
 
-        Returns a list of dicts, one dict per image. The dict contains:
-        rois: [N, (y1, x1, y2, x2)] detection bounding boxes
-        class_ids: [N] int class IDs
-        scores: [N] float probability scores for the class IDs
+        画像ごとに1つずつ辞書を含む辞書のリストを返す。辞書の内容:
+        rois: [N, (y1, x1, y2, x2)] 検出バウンディングボックス
+        class_ids: [N] 整数型クラスID
+        scores: [N] クラスIDの浮動小数点確率スコア
         masks: [H, W, N] instance binary masks
         """
-        assert self.mode == "inference", "Create model in inference mode."
+        assert self.mode == "inference", "モデルを推論モードで作成してください。"
         assert len(molded_images) == self.config.BATCH_SIZE,\
-            "Number of images must be equal to BATCH_SIZE"
+            "画像数はBATCH_SIZEと等しくなければなりません"
 
         if verbose:
             log("Processing {} images".format(len(molded_images)))
@@ -2591,7 +2567,7 @@ class MaskRCNN():
         # All images in a batch MUST be of the same size
         image_shape = molded_images[0].shape
         for g in molded_images[1:]:
-            assert g.shape == image_shape, "Images must have the same size"
+            assert g.shape == image_shape, "画像は同じサイズである必要があります"
 
         # Anchors
         anchors = self.get_anchors(image_shape)
@@ -2623,40 +2599,40 @@ class MaskRCNN():
         return results
 
     def get_anchors(self, image_shape):
-        """Returns anchor pyramid for the given image size."""
+        """指定された画像サイズのアンカーピラミッドを返す。"""
         backbone_shapes = compute_backbone_shapes(self.config, image_shape)
-        # Cache anchors and reuse if image shape is the same
+        # アンカーをキャッシュし、画像の形状が同じ場合は再使用
         if not hasattr(self, "_anchor_cache"):
             self._anchor_cache = {}
         if not tuple(image_shape) in self._anchor_cache:
-            # Generate Anchors
+            # アンカーを生成
             a = utils.generate_pyramid_anchors(
                 self.config.RPN_ANCHOR_SCALES,
                 self.config.RPN_ANCHOR_RATIOS,
                 backbone_shapes,
                 self.config.BACKBONE_STRIDES,
                 self.config.RPN_ANCHOR_STRIDE)
-            # Keep a copy of the latest anchors in pixel coordinates because
-            # it's used in inspect_model notebooks.
-            # TODO: Remove this after the notebook are refactored to not use it
+            # inspect_modelノートブックで使用されるため、最新のアンカーの
+            # ピクセル座標コピーを保持。
+            # TODO: ノートブックがこれを使用しないようにリファクタリングされた後に除去
             self.anchors = a
-            # Normalize coordinates
+            # 座標を正規化
             self._anchor_cache[tuple(image_shape)] = utils.norm_boxes(a, image_shape[:2])
         return self._anchor_cache[tuple(image_shape)]
 
     def ancestor(self, tensor, name, checked=None):
-        """Finds the ancestor of a TF tensor in the computation graph.
-        tensor: TensorFlow symbolic tensor.
-        name: Name of ancestor tensor to find
-        checked: For internal use. A list of tensors that were already
-                 searched to avoid loops in traversing the graph.
+        """計算グラフ内のTFテンソルの祖先を検索。
+        tensor: TensorFlowシンボリックテンソル。
+        name: 検索する祖先テンソルの名前
+        checked: 内部使用。グラフを辿る際のループを避けるため、
+                 すでに検索されたテンソルのリスト。
         """
         checked = checked if checked is not None else []
-        # Put a limit on how deep we go to avoid very long loops
+        # 非常に長いループを避けるため、深さに制限を設ける
         if len(checked) > 500:
             return None
-        # Convert name to a regex and allow matching a number prefix
-        # because Keras adds them automatically
+        # Kerasが自動的に追加するため、名前をregexに変換し、数字プレフィックスの
+        # マッチングを許可
         if isinstance(name, str):
             name = re.compile(name.replace("/", r"(\_\d+)*/"))
 
@@ -2673,53 +2649,50 @@ class MaskRCNN():
         return None
 
     def find_trainable_layer(self, layer):
-        """If a layer is encapsulated by another layer, this function
-        digs through the encapsulation and returns the layer that holds
-        the weights.
+        """レイヤーが別のレイヤーにカプセル化されている場合、この関数は
+        カプセル化を揘り下げ、重みを保持するレイヤーを返す。
         """
         if layer.__class__.__name__ == 'TimeDistributed':
             return self.find_trainable_layer(layer.layer)
         return layer
 
     def get_trainable_layers(self):
-        """Returns a list of layers that have weights."""
+        """重みを持つレイヤーのリストを返す。"""
         layers = []
-        # Loop through all layers
+        # すべてのレイヤーをループ
         for l in self.keras_model.layers:
-            # If layer is a wrapper, find inner trainable layer
+            # レイヤーがラッパーの場合、内部の訓練可能レイヤーを検索
             l = self.find_trainable_layer(l)
-            # Include layer if it has weights
+            # 重みを持つ場合はレイヤーを含める
             if l.get_weights():
                 layers.append(l)
         return layers
 
     def run_graph(self, images, outputs, image_metas=None):
-        """Runs a sub-set of the computation graph that computes the given
-        outputs.
+        """与えられた出力を計算する計算グラフのサブセットを実行。
 
-        image_metas: If provided, the images are assumed to be already
-            molded (i.e. resized, padded, and normalized)
+        image_metas: 提供された場合、画像はすでに成型されている（つまりリサイズ、
+            パディング、正規化済み）と仮定
 
-        outputs: List of tuples (name, tensor) to compute. The tensors are
-            symbolic TensorFlow tensors and the names are for easy tracking.
+        outputs: 計算する(name, tensor)タプルのリスト。テンソルは
+            シンボリックTensorFlowテンソルで、名前は簡単な追跡用。
 
-        Returns an ordered dict of results. Keys are the names received in the
-        input and values are Numpy arrays.
+        結果の順序付き辞書を返す。キーは入力で受け取った名前で、値はNumpy配列。
         """
         model = self.keras_model
 
-        # Organize desired outputs into an ordered dict
+        # 希望する出力を順序付き辞書に整理
         outputs = OrderedDict(outputs)
         for o in outputs.values():
             assert o is not None
 
-        # Build a Keras function to run parts of the computation graph
+        # 計算グラフの一部を実行するKeras関数を構築
         inputs = model.inputs
         if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
             inputs += [K.learning_phase()]
         kf = K.function(model.inputs, list(outputs.values()))
 
-        # Prepare inputs
+        # 入力を準備
         if image_metas is None:
             molded_images, image_metas, _ = self.mold_inputs(images)
         else:
@@ -2732,12 +2705,12 @@ class MaskRCNN():
         anchors = np.broadcast_to(anchors, (self.config.BATCH_SIZE,) + anchors.shape)
         model_in = [molded_images, image_metas, anchors]
 
-        # Run inference
+        # 推論を実行
         if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
             model_in.append(0.)
         outputs_np = kf(model_in)
 
-        # Pack the generated Numpy arrays into a a dict and log the results.
+        # 生成されたNumpy配列を辞書にパックし、結果をログ出力。
         outputs_np = OrderedDict([(k, v)
                                   for k, v in zip(outputs.keys(), outputs_np)])
         for k, v in outputs_np.items():
@@ -2746,22 +2719,22 @@ class MaskRCNN():
 
 
 ############################################################
-#  Data Formatting
+#  データフォーマット
 ############################################################
 
 def compose_image_meta(image_id, original_image_shape, image_shape,
                        window, scale, active_class_ids):
-    """Takes attributes of an image and puts them in one 1D array.
+    """画像の属性を受け取り、1次元配列に格納。
 
-    image_id: An int ID of the image. Useful for debugging.
-    original_image_shape: [H, W, C] before resizing or padding.
-    image_shape: [H, W, C] after resizing and padding
-    window: (y1, x1, y2, x2) in pixels. The area of the image where the real
-            image is (excluding the padding)
-    scale: The scaling factor applied to the original image (float32)
-    active_class_ids: List of class_ids available in the dataset from which
-        the image came. Useful if training on images from multiple datasets
-        where not all classes are present in all datasets.
+    image_id: 画像のint ID。デバッグに有用。
+    original_image_shape: リサイズやパディング前の[H, W, C]。
+    image_shape: リサイズおよびパディング後の[H, W, C]
+    window: ピクセル単位の(y1, x1, y2, x2)。実際の画像がある画像の領域
+            (パディングを除く)
+    scale: 元の画像に適用されたスケールファクター (float32)
+    active_class_ids: 画像が由来するデータセットで利用可能なclass_idsのリスト。
+        すべてのクラスがすべてのデータセットに存在しない複数のデータセットの
+        画像で訓練する場合に有用。
     """
     meta = np.array(
         [image_id] +                  # size=1
@@ -2775,12 +2748,12 @@ def compose_image_meta(image_id, original_image_shape, image_shape,
 
 
 def parse_image_meta(meta):
-    """Parses an array that contains image attributes to its components.
-    See compose_image_meta() for more details.
+    """画像属性を含む配列をそのコンポーネントに解析。
+    詳細はcompose_image_meta()を参照。
 
-    meta: [batch, meta length] where meta length depends on NUM_CLASSES
+    meta: [batch, meta length] meta lengthはNUM_CLASSESに依存
 
-    Returns a dict of the parsed values.
+    解析された値の辞書を返す。
     """
     image_id = meta[:, 0]
     original_image_shape = meta[:, 1:4]
@@ -2799,12 +2772,12 @@ def parse_image_meta(meta):
 
 
 def parse_image_meta_graph(meta):
-    """Parses a tensor that contains image attributes to its components.
-    See compose_image_meta() for more details.
+    """画像属性を含むテンソルをそのコンポーネントに解析。
+    詳細はcompose_image_meta()を参照。
 
-    meta: [batch, meta length] where meta length depends on NUM_CLASSES
+    meta: [batch, meta length] meta lengthはNUM_CLASSESに依存
 
-    Returns a dict of the parsed tensors.
+    解析されたテンソルの辞書を返す。
     """
     image_id = meta[:, 0]
     original_image_shape = meta[:, 1:4]
@@ -2823,28 +2796,28 @@ def parse_image_meta_graph(meta):
 
 
 def mold_image(images, config):
-    """Expects an RGB image (or array of images) and subtracts
-    the mean pixel and converts it to float. Expects image
-    colors in RGB order.
+    """RGB画像（または画像の配列）を期待し、
+    平均ピクセルを減算してfloatに変換。画像の色は
+    RGB順であることを期待。
     """
     return images.astype(np.float32) - config.MEAN_PIXEL
 
 
 def unmold_image(normalized_images, config):
-    """Takes a image normalized with mold() and returns the original."""
+    """mold()で正規化された画像を受け取り、元の画像を返す。"""
     return (normalized_images + config.MEAN_PIXEL).astype(np.uint8)
 
 
 ############################################################
-#  Miscellenous Graph Functions
+#  その他のグラフ関数
 ############################################################
 
 def trim_zeros_graph(boxes, name='trim_zeros'):
-    """Often boxes are represented with matrices of shape [N, 4] and
-    are padded with zeros. This removes zero boxes.
+    """ボックスはしばしば[N, 4]の形状の行列で表現され、
+    ゼロでパディングされる。これはゼロボックスを除去。
 
-    boxes: [N, 4] matrix of boxes.
-    non_zeros: [N] a 1D boolean mask identifying the rows to keep
+    boxes: [N, 4] ボックスの行列。
+    non_zeros: [N] 保持する行を識別する1Dブールマスク
     """
     non_zeros = tf.cast(tf.reduce_sum(tf.abs(boxes), axis=1), tf.bool)
     boxes = tf.boolean_mask(boxes, non_zeros, name=name)
@@ -2852,8 +2825,8 @@ def trim_zeros_graph(boxes, name='trim_zeros'):
 
 
 def batch_pack_graph(x, counts, num_rows):
-    """Picks different number of values from each row
-    in x depending on the values in counts.
+    """countsの値に応じて、xの各行から
+    異なる数の値を選択。
     """
     outputs = []
     for i in range(num_rows):
@@ -2862,15 +2835,15 @@ def batch_pack_graph(x, counts, num_rows):
 
 
 def norm_boxes_graph(boxes, shape):
-    """Converts boxes from pixel coordinates to normalized coordinates.
-    boxes: [..., (y1, x1, y2, x2)] in pixel coordinates
-    shape: [..., (height, width)] in pixels
+    """ボックスをピクセル座標から正規化座標に変換。
+    boxes: [..., (y1, x1, y2, x2)] ピクセル座標
+    shape: [..., (height, width)] ピクセル単位
 
-    Note: In pixel coordinates (y2, x2) is outside the box. But in normalized
-    coordinates it's inside the box.
+    注意: ピクセル座標では(y2, x2)はボックスの外側。しかし正規化座標では
+    ボックスの内側。
 
     Returns:
-        [..., (y1, x1, y2, x2)] in normalized coordinates
+        [..., (y1, x1, y2, x2)] 正規化座標
     """
     h, w = tf.split(tf.cast(shape, tf.float32), 2)
     scale = tf.concat([h, w, h, w], axis=-1) - tf.constant(1.0)
@@ -2879,15 +2852,15 @@ def norm_boxes_graph(boxes, shape):
 
 
 def denorm_boxes_graph(boxes, shape):
-    """Converts boxes from normalized coordinates to pixel coordinates.
-    boxes: [..., (y1, x1, y2, x2)] in normalized coordinates
-    shape: [..., (height, width)] in pixels
+    """ボックスを正規化座標からピクセル座標に変換。
+    boxes: [..., (y1, x1, y2, x2)] 正規化座標
+    shape: [..., (height, width)] ピクセル単位
 
-    Note: In pixel coordinates (y2, x2) is outside the box. But in normalized
-    coordinates it's inside the box.
+    注意: ピクセル座標では(y2, x2)はボックスの外側。しかし正規化座標では
+    ボックスの内側。
 
     Returns:
-        [..., (y1, x1, y2, x2)] in pixel coordinates
+        [..., (y1, x1, y2, x2)] ピクセル座標
     """
     h, w = tf.split(tf.cast(shape, tf.float32), 2)
     scale = tf.concat([h, w, h, w], axis=-1) - tf.constant(1.0)
