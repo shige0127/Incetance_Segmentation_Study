@@ -942,7 +942,7 @@ def build_rpn_model(anchor_stride, anchors_per_location, depth):
 def fpn_classifier_graph(rois, feature_maps, image_meta,
                          pool_size, num_classes, train_bn=True,
                          fc_layers_size=1024):
-    """特徴ピラミッドネットワークの分類器および回帰ヘッドの計算グラフを構築する。
+    """FPNから抽出した特徴を使って、分類と位置調整を行うニューラルネットワーク部分を作成する
 
     rois: [batch, num_rois, (y1, x1, y2, x2)] 正規化座標での提案ボックス。
     feature_maps: ピラミッドの異なるレイヤーからの特徴マップのリスト、
@@ -964,6 +964,7 @@ def fpn_classifier_graph(rois, feature_maps, image_meta,
     x = PyramidROIAlign([pool_size, pool_size],
                         name="roi_align_classifier")([rois, image_meta] + feature_maps)
     # 2つの1024 FCレイヤー（一貫性のためConv2Dで実装）
+    # バッチ正規化
     x = KL.TimeDistributed(KL.Conv2D(fc_layers_size, (pool_size, pool_size), padding="valid"),
                            name="mrcnn_class_conv1")(x)
     x = KL.TimeDistributed(BatchNorm(), name='mrcnn_class_bn1')(x, training=train_bn)
@@ -1011,6 +1012,9 @@ def build_fpn_mask_graph(rois, feature_maps, image_meta,
                         name="roi_align_mask")([rois, image_meta] + feature_maps)
 
     # 畳み込みレイヤー
+    # バッチ正規化
+    # TimeDistributedはWrappperからさらにLayerを継承しており、__call__メソッドが定義されている。
+    # インスタンス生成後に関数利用した時にcallメソッドが呼ばれるので、実際はcallが次のxを使った時に走る
     x = KL.TimeDistributed(KL.Conv2D(256, (3, 3), padding="same"),
                            name="mrcnn_mask_conv1")(x)
     x = KL.TimeDistributed(BatchNorm(),
@@ -1037,6 +1041,7 @@ def build_fpn_mask_graph(rois, feature_maps, image_meta,
 
     x = KL.TimeDistributed(KL.Conv2DTranspose(256, (2, 2), strides=2, activation="relu"),
                            name="mrcnn_mask_deconv")(x)
+    # 0,1のマスクを生成
     x = KL.TimeDistributed(KL.Conv2D(num_classes, (1, 1), strides=1, activation="sigmoid"),
                            name="mrcnn_mask")(x)
     return x
@@ -2048,12 +2053,14 @@ class MaskRCNN():
 
             # ネットワークヘッド
             # TODO: これがゼロパディングされたROIを適切に処理するか確認
+            # 分類予測値、soft_max後の分類予測、予測bbox
             mrcnn_class_logits, mrcnn_class, mrcnn_bbox =\
                 fpn_classifier_graph(rois, mrcnn_feature_maps, input_image_meta,
                                      config.POOL_SIZE, config.NUM_CLASSES,
                                      train_bn=config.TRAIN_BN,
                                      fc_layers_size=config.FPN_CLASSIF_FC_LAYERS_SIZE)
 
+            # マスク予測
             mrcnn_mask = build_fpn_mask_graph(rois, mrcnn_feature_maps,
                                               input_image_meta,
                                               config.MASK_POOL_SIZE,
@@ -2061,6 +2068,7 @@ class MaskRCNN():
                                               train_bn=config.TRAIN_BN)
 
             # TODO: クリーンアップ (必要に応じてtf.identifyを使用)
+            # ここは実質何もしておらず、output_roisという名前をつけるためだけ
             output_rois = KL.Lambda(lambda x: x * 1,
                                    output_shape=lambda s: s,
                                    name="output_rois")(rois)
@@ -2106,9 +2114,10 @@ class MaskRCNN():
                                      train_bn=config.TRAIN_BN,
                                      fc_layers_size=config.FPN_CLASSIF_FC_LAYERS_SIZE)
 
-            # 検出
+            # バウンディングボックス検出
             # 出力は[batch, num_detections, (y1, x1, y2, x2, class_id, score)]で
             # 正規化座標
+            # 最終検出結果であり、候補領域のROIとは異なる
             detections = DetectionLayer(config, name="mrcnn_detection")(
                 [rpn_rois, mrcnn_class, mrcnn_bbox, input_image_meta])
 
