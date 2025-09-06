@@ -541,6 +541,7 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
     gt_boxes, non_zeros = trim_zeros_graph(gt_boxes, name="trim_gt_boxes")
     gt_class_ids = tf.boolean_mask(gt_class_ids, non_zeros,
                                    name="trim_gt_class_ids")
+    # バイナリ(0,1)の3次元配列、0埋めを削除
     gt_masks = tf.gather(gt_masks, tf.where(non_zeros)[:, 0], axis=2,
                          name="trim_gt_masks")
 
@@ -562,6 +563,8 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
     crowd_iou_max = tf.reduce_max(crowd_overlaps, axis=1)
     no_crowd_bool = (crowd_iou_max < 0.001)
 
+    # 分類ヘッドが背景と物体を区別する学習するためのポジティブデータとネガティブデータを作成
+    # 分類ヘッドはROIをクラスに分類する
     # ポジティブおよびネガティブROIを決定
     roi_iou_max = tf.reduce_max(overlaps, axis=1)
     # 1. ポジティブROIはGTボックスとのIoU >= 0.5のもの
@@ -599,30 +602,39 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
     deltas /= config.BBOX_STD_DEV
 
     # ポジティブROIをGTマスクに割り当て
-    # マスクを[N, height, width, 1]に並べ替え
+    # マスクを[N, height, width, 1]に並べ替え（[h,w,N] → [N,h,w,1]）
     transposed_masks = tf.expand_dims(tf.transpose(gt_masks, [2, 0, 1]), -1)
-    # 各ROIに対して正しいマスクを選択
+    # 各ポジティブROIに対して対応するGTマスクを選択
     roi_masks = tf.gather(transposed_masks, roi_gt_box_assignment)
 
     # マスクターゲットを計算
+    # クロップ用のボックス座標を設定（初期値はポジティブROIの座標）
     boxes = positive_rois
     if config.USE_MINI_MASK:
-        # ROI座標を正規化画像空間から変換
-        # 正規化されたミニマスク空間へ。
+        # ミニマスクモード：ROI座標を正規化されたミニマスク空間へ変換
+        # メモリ効率化
+        # ポジティブROIの座標を4つの成分に分割
         y1, x1, y2, x2 = tf.split(positive_rois, 4, axis=1)
+        # 対応するGTボックスの座標を4つの成分に分割
         gt_y1, gt_x1, gt_y2, gt_x2 = tf.split(roi_gt_boxes, 4, axis=1)
+        # GTボックスの高さと幅を計算
         gt_h = gt_y2 - gt_y1
         gt_w = gt_x2 - gt_x1
+        # ROI座標をGTボックス内での相対座標に変換（0-1の範囲）
         y1 = (y1 - gt_y1) / gt_h
         x1 = (x1 - gt_x1) / gt_w
         y2 = (y2 - gt_y1) / gt_h
         x2 = (x2 - gt_x1) / gt_w
+        # 変換後の座標を結合
         boxes = tf.concat([y1, x1, y2, x2], 1)
+    # 各ROIマスクに対するインデックスを生成（0から始まる連番）
     box_ids = tf.range(0, tf.shape(roi_masks)[0])
+    # ROIに対応する領域をマスクからクロップし、指定サイズにリサイズ
+    # →学習データを作成する
     masks = tf.image.crop_and_resize(tf.cast(roi_masks, tf.float32), boxes,
                                      box_ids,
                                      config.MASK_SHAPE)
-    # マスクから余分な次元を削除。
+    # マスクから余分な次元を削除（[N,h,w,1] → [N,h,w]）
     masks = tf.squeeze(masks, axis=3)
 
     # バイナリクロスエントロピー损失で使用するため、
@@ -631,15 +643,24 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
 
     # ネガティブROIを追加し、ネガティブROIに使用されない
     # bboxデルタとマスクをゼロでパディング。
+    # ポジティブとネガティブROIを結合
     rois = tf.concat([positive_rois, negative_rois], axis=0)
+    # ネガティブROIの数を取得
     N = tf.shape(negative_rois)[0]
+    # 目標ROI数に不足している分のパディング数を計算
     P = tf.maximum(config.TRAIN_ROIS_PER_IMAGE - tf.shape(rois)[0], 0)
+    # ROIをゼロパディングして固定サイズに
     rois = tf.pad(rois, [(0, P), (0, 0)])
+    # GTボックスをネガティブ分（N）とパディング分（P）でゼロ拡張
     roi_gt_boxes = tf.pad(roi_gt_boxes, [(0, N + P), (0, 0)])
+    # GTクラスIDをネガティブ分とパディング分でゼロ拡張
     roi_gt_class_ids = tf.pad(roi_gt_class_ids, [(0, N + P)])
+    # デルタをネガティブ分とパディング分でゼロ拡張
     deltas = tf.pad(deltas, [(0, N + P), (0, 0)])
+    # マスクをネガティブ分とパディング分でゼロ拡張
     masks = tf.pad(masks, [[0, N + P], (0, 0), (0, 0)])
 
+    # 最終的なROI、クラスID、デルタ、マスクを返す
     return rois, roi_gt_class_ids, deltas, masks
 
 
@@ -2018,7 +2039,7 @@ class MaskRCNN():
                 target_rois = rpn_rois
 
             # 検出ターゲットを生成
-            # 提案をサブサンプルし、訓練用のターゲット出力を生成
+            # 提案をサブサンプルし、学習用のターゲット出力を生成
             # 提案クラスID、gt_boxes、gt_masksはゼロパディングされていることに注意。
             # 同様に、返されるroisとtargetsもゼロパディングされている。
             rois, target_class_ids, target_bbox, target_mask =\
