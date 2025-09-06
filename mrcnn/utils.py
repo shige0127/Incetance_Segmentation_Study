@@ -582,38 +582,37 @@ def unmold_mask(mask, bbox, image_shape):
 
 def generate_anchors(scales, ratios, shape, feature_stride, anchor_stride):
     """
-    scales: 1D array of anchor sizes in pixels. Example: [32, 64, 128]
-    ratios: 1D array of anchor ratios of width/height. Example: [0.5, 1, 2]
-    shape: [height, width] spatial shape of the feature map over which
-            to generate anchors.
-    feature_stride: Stride of the feature map relative to the image in pixels.
-    anchor_stride: Stride of anchors on the feature map. For example, if the
-        value is 2 then generate anchors for every other feature map pixel.
+    scales: ピクセル単位のアンカーサイズの1次元配列。例: [32, 64, 128]
+    ratios: 幅/高さのアンカー縦横比の1次元配列。例: [0.5, 1, 2]
+    shape: [height, width] アンカーを生成する特徴マップの空間形状
+    feature_stride: 画像に対する特徴マップのストライド（ピクセル単位）
+    anchor_stride: 特徴マップ上のアンカーのストライド。例えば、値が2の場合、
+        特徴マップの1つおきのピクセルごとにアンカーを生成
     """
-    # Get all combinations of scales and ratios
+    # スケールと縦横比のすべての組み合わせを取得
     scales, ratios = np.meshgrid(np.array(scales), np.array(ratios))
     scales = scales.flatten()
     ratios = ratios.flatten()
 
-    # Enumerate heights and widths from scales and ratios
+    # スケールと縦横比から高さと幅を列挙
     heights = scales / np.sqrt(ratios)
     widths = scales * np.sqrt(ratios)
 
-    # Enumerate shifts in feature space
+    # 特徴空間でのシフトを列挙
     shifts_y = np.arange(0, shape[0], anchor_stride) * feature_stride
     shifts_x = np.arange(0, shape[1], anchor_stride) * feature_stride
     shifts_x, shifts_y = np.meshgrid(shifts_x, shifts_y)
 
-    # Enumerate combinations of shifts, widths, and heights
+    # シフト、幅、高さの組み合わせを列挙
     box_widths, box_centers_x = np.meshgrid(widths, shifts_x)
     box_heights, box_centers_y = np.meshgrid(heights, shifts_y)
 
-    # Reshape to get a list of (y, x) and a list of (h, w)
+    # (y, x)のリストと(h, w)のリストを取得するために形状を変更
     box_centers = np.stack(
         [box_centers_y, box_centers_x], axis=2).reshape([-1, 2])
     box_sizes = np.stack([box_heights, box_widths], axis=2).reshape([-1, 2])
 
-    # Convert to corner coordinates (y1, x1, y2, x2)
+    # 角の座標(y1, x1, y2, x2)に変換
     boxes = np.concatenate([box_centers - 0.5 * box_sizes,
                             box_centers + 0.5 * box_sizes], axis=1)
     return boxes
@@ -621,16 +620,15 @@ def generate_anchors(scales, ratios, shape, feature_stride, anchor_stride):
 
 def generate_pyramid_anchors(scales, ratios, feature_shapes, feature_strides,
                              anchor_stride):
-    """Generate anchors at different levels of a feature pyramid. Each scale
-    is associated with a level of the pyramid, but each ratio is used in
-    all levels of the pyramid.
+    """特徴ピラミッドの異なるレベルでアンカーを生成する。各スケールは
+    ピラミッドのレベルに対応するが、各比率はピラミッドの全レベルで使用される。
 
-    Returns:
-    anchors: [N, (y1, x1, y2, x2)]. All generated anchors in one array. Sorted
-        with the same order of the given scales. So, anchors of scale[0] come
-        first, then anchors of scale[1], and so on.
+    戻り値:
+    anchors: [N, (y1, x1, y2, x2)]. 生成された全アンカーを1つの配列に格納。
+        指定されたスケールと同じ順序でソート。つまり、scale[0]のアンカーが最初に来て、
+        次にscale[1]のアンカー、という順序。
     """
-    # Anchors
+    # アンカー
     # [anchor_count, (y1, x1, y2, x2)]
     anchors = []
     for i in range(len(scales)):
@@ -793,23 +791,22 @@ def compute_recall(pred_boxes, gt_boxes, iou):
     return recall, positive_ids
 
 
-# ## Batch Slicing
-# Some custom layers support a batch size of 1 only, and require a lot of work
-# to support batches greater than 1. This function slices an input tensor
-# across the batch dimension and feeds batches of size 1. Effectively,
-# an easy way to support batches > 1 quickly with little code modification.
-# In the long run, it's more efficient to modify the code to support large
-# batches and getting rid of this function. Consider this a temporary solution
+# ## バッチスライシング
+# 一部のカスタムレイヤーはバッチサイズ1のみをサポートしており、1より大きいバッチを
+# サポートするには多くの作業が必要です。この関数は入力テンソルをバッチ次元で
+# スライスし、サイズ1のバッチを供給します。実質的に、少ないコード修正で
+# バッチ > 1を迅速にサポートする簡単な方法です。
+# 長期的には、大きなバッチをサポートするようにコードを修正し、
+# この関数を取り除く方が効率的です。これは一時的な解決策と考えてください
 def batch_slice(inputs, graph_fn, batch_size, names=None):
-    """Splits inputs into slices and feeds each slice to a copy of the given
-    computation graph and then combines the results. It allows you to run a
-    graph on a batch of inputs even if the graph is written to support one
-    instance only.
+    """入力をスライスに分割し、各スライスを指定された計算グラフのコピーに
+    供給してから結果を結合します。グラフが1つのインスタンスのみをサポート
+    するように書かれていても、入力のバッチでグラフを実行することができます。
 
-    inputs: list of tensors. All must have the same first dimension length
-    graph_fn: A function that returns a TF tensor that's part of a graph.
-    batch_size: number of slices to divide the data into.
-    names: If provided, assigns names to the resulting tensors.
+    inputs: テンソルのリスト。すべて同じ第一次元の長さを持つ必要があります
+    graph_fn: グラフの一部であるTFテンソルを返す関数
+    batch_size: データを分割するスライスの数
+    names: 指定された場合、結果のテンソルに名前を割り当てます
     """
     if not isinstance(inputs, list):
         inputs = [inputs]

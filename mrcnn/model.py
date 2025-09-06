@@ -82,6 +82,7 @@ def compute_backbone_shapes(config, image_shape):
     return np.array(
         [[int(math.ceil(image_shape[0] / stride)),
             int(math.ceil(image_shape[1] / stride))]
+            # BACKBONE_STRIDES = [4, 8, 16, 32, 64]
             for stride in config.BACKBONE_STRIDES])
 
 
@@ -107,7 +108,8 @@ def identity_block(input_tensor, kernel_size, filters, stage, block,
     nb_filter1, nb_filter2, nb_filter3 = filters
     conv_name_base = 'res' + str(stage) + block + '_branch'
     bn_name_base = 'bn' + str(stage) + block + '_branch'
-
+    # バイアスは線形変換の切片のこと
+    # 勾配消失の問題を解決できる
     x = KL.Conv2D(nb_filter1, (1, 1), name=conv_name_base + '2a',
                   use_bias=use_bias)(input_tensor)
     x = BatchNorm(name=bn_name_base + '2a')(x, training=train_bn)
@@ -121,7 +123,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block,
     x = KL.Conv2D(nb_filter3, (1, 1), name=conv_name_base + '2c',
                   use_bias=use_bias)(x)
     x = BatchNorm(name=bn_name_base + '2c')(x, training=train_bn)
-
+    # ショートカット、ここでinput_tensorが入る
     x = KL.Add()([x, input_tensor])
     x = KL.Activation('relu', name='res' + str(stage) + block + '_out')(x)
     return x
@@ -174,35 +176,59 @@ def resnet_graph(input_image, architecture, stage5=False, train_bn=True):
         stage5: Boolean。Falseの場合、ネットワークのstage5は作成されません
         train_bn: Boolean。Batch Norm層を訓練するか凍結するか
     """
+    # 引数architectureがresnet50またはresnet101であることを確認
     assert architecture in ["resnet50", "resnet101"]
     # ステージ 1
+    # 入力画像に対して上下左右に3ピクセルずつゼロパディングを追加
     x = KL.ZeroPadding2D((3, 3))(input_image)
+    # 7x7の畳み込み層、64チャネル出力、ストライド2で画像サイズを半分に
+    # ストライド2で位置を飛ばして計算するため小さくなる
     x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x)
+    # バッチ正規化層を適用（train_bnパラメータで学習/凍結を制御）
     x = BatchNorm(name='bn_conv1')(x, training=train_bn)
+    # ReLU活性化関数を適用
     x = KL.Activation('relu')(x)
+    # 3x3の最大プーリング、ストライド2でさらに画像サイズを半分に、C1として保存
     C1 = x = KL.MaxPooling2D((3, 3), strides=(2, 2), padding="same")(x)
     # ステージ 2
+    # conv_block: ダウンサンプリング付きのResNetブロック、チャネル数を64→256に増加
+    # x,3の3は3x3のカーネルサイズを指定
     x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), train_bn=train_bn)
+    # identity_block: スキップ接続付きのResNetブロック、チャネル数維持
     x = identity_block(x, 3, [64, 64, 256], stage=2, block='b', train_bn=train_bn)
+    # 3つ目のidentity_blockの出力をC2として保存（FPNで使用）
     C2 = x = identity_block(x, 3, [64, 64, 256], stage=2, block='c', train_bn=train_bn)
     # ステージ 3
+    # conv_blockでダウンサンプリング、チャネル数を256→512に増加
     x = conv_block(x, 3, [128, 128, 512], stage=3, block='a', train_bn=train_bn)
+    # 3つのidentity_blockを連続適用、チャネル数512を維持
     x = identity_block(x, 3, [128, 128, 512], stage=3, block='b', train_bn=train_bn)
     x = identity_block(x, 3, [128, 128, 512], stage=3, block='c', train_bn=train_bn)
+    # 4つ目のidentity_blockの出力をC3として保存（FPNで使用）
     C3 = x = identity_block(x, 3, [128, 128, 512], stage=3, block='d', train_bn=train_bn)
     # ステージ 4
+    # conv_blockでダウンサンプリング、チャネル数を512→1024に増加
     x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a', train_bn=train_bn)
+    # ResNet50では5個、ResNet101では22個のidentity_blockを繰り返し
     block_count = {"resnet50": 5, "resnet101": 22}[architecture]
+    # 各identity_blockにはb,c,d,e...のブロック名を付与（chr(98)='b'から開始）
     for i in range(block_count):
         x = identity_block(x, 3, [256, 256, 1024], stage=4, block=chr(98 + i), train_bn=train_bn)
+    # ステージ4の最終出力をC4として保存
     C4 = x
     # ステージ 5
+    # stage5フラグがTrueの場合のみステージ5を構築
     if stage5:
+        # conv_blockでダウンサンプリング、チャネル数を1024→2048に増加
         x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a', train_bn=train_bn)
+        # 2つのidentity_blockを連続適用
         x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b', train_bn=train_bn)
+        # 最終identity_blockの出力をC5として保存
         C5 = x = identity_block(x, 3, [512, 512, 2048], stage=5, block='c', train_bn=train_bn)
     else:
+        # stage5を使用しない場合はC5をNoneに設定
         C5 = None
+    # 各ステージの出力特徴マップをリストで返す（FPNで使用）
     return [C1, C2, C3, C4, C5]
 
 
@@ -275,7 +301,8 @@ class ProposalLayer(KE.Layer):
     def call(self, inputs):
         # ボックススコア。前景クラス信頼度を使用。[Batch, num_rois, 1]
         scores = inputs[0][:, :, 1]
-        # ボックスデルタ [batch, num_rois, 4]
+        # ボックスデルタ deltas.shape = [batch_size, num_anchors, 4]
+        # アンカーから正解への調整量
         deltas = inputs[1]
         deltas = deltas * np.reshape(self.config.RPN_BBOX_STD_DEV, [1, 1, 4])
         # アンカー
@@ -286,6 +313,7 @@ class ProposalLayer(KE.Layer):
         pre_nms_limit = tf.minimum(self.config.PRE_NMS_LIMIT, tf.shape(anchors)[1])
         ix = tf.nn.top_k(scores, pre_nms_limit, sorted=True,
                          name="top_anchors").indices
+        # サイズ1のバッチにする、一部のカスタムレイヤーはバッチサイズ1のみをサポート
         scores = utils.batch_slice([scores, ix], lambda x, y: tf.gather(x, y),
                                    self.config.IMAGES_PER_GPU)
         deltas = utils.batch_slice([deltas, ix], lambda x, y: tf.gather(x, y),
@@ -1656,6 +1684,7 @@ def data_generator(dataset, config, shuffle=True, augment=False, augmentation=No
 
     # アンカー
     # [anchor_count, (y1, x1, y2, x2)]
+    # ステップ1: 特徴マップサイズ計算
     backbone_shapes = compute_backbone_shapes(config, config.IMAGE_SHAPE)
     anchors = utils.generate_pyramid_anchors(config.RPN_ANCHOR_SCALES,
                                              config.RPN_ANCHOR_RATIOS,
@@ -1879,6 +1908,7 @@ class MaskRCNN():
         # ボトムアップレイヤー
         # 各ステージの最後のレイヤーのリストを返す、合計5つ。
         # ヘッド(stage 5)を作成しないため、リストの4番目の項目を選択。
+        # C2〜C5はresnetのグラフを5分割したネットワーク
         if callable(config.BACKBONE):
             _, C2, C3, C4, C5 = config.BACKBONE(input_image, stage5=True,
                                                 train_bn=config.TRAIN_BN)
@@ -1886,28 +1916,44 @@ class MaskRCNN():
             _, C2, C3, C4, C5 = resnet_graph(input_image, config.BACKBONE,
                                              stage5=True, train_bn=config.TRAIN_BN)
         # トップダウンレイヤー
-        # TODO: add assert to varify feature map sizes match what's in config
+        # C5（最も深い特徴マップ）を1x1畳み込みで256チャネルに変換し、P5を作成
         P5 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (1, 1), name='fpn_c5p5')(C5)
+        # P4を作成：P5を2倍にアップサンプリングした特徴とC4を1x1畳み込みした特徴を加算
         P4 = KL.Add(name="fpn_p4add")([
+            # P5を2倍にアップサンプリング（解像度を上げる）してP4のサイズに合わせる
             KL.UpSampling2D(size=(2, 2), name="fpn_p5upsampled")(P5),
+            # C4を1x1畳み込みで256チャネルに変換
             KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (1, 1), name='fpn_c4p4')(C4)])
+        # P3を作成：P4を2倍にアップサンプリングした特徴とC3を1x1畳み込みした特徴を加算
         P3 = KL.Add(name="fpn_p3add")([
+            # P4を2倍にアップサンプリング（解像度を上げる）してP3のサイズに合わせる
             KL.UpSampling2D(size=(2, 2), name="fpn_p4upsampled")(P4),
+            # C3を1x1畳み込みで256チャネルに変換
             KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (1, 1), name='fpn_c3p3')(C3)])
+        # P2を作成：P3を2倍にアップサンプリングした特徴とC2を1x1畳み込みした特徴を加算
         P2 = KL.Add(name="fpn_p2add")([
+            # P3を2倍にアップサンプリング（解像度を上げる）してP2のサイズに合わせる
             KL.UpSampling2D(size=(2, 2), name="fpn_p3upsampled")(P3),
+            # C2を1x1畳み込みで256チャネルに変換
             KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (1, 1), name='fpn_c2p2')(C2)])
         # 最終特徴マップを得るため、全てのPレイヤーに3x3 convをアタッチ。
+        # P2に3x3畳み込みを適用してエイリアシング効果を軽減し、最終的な特徴マップを生成
         P2 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (3, 3), padding="SAME", name="fpn_p2")(P2)
+        # P3に3x3畳み込みを適用してエイリアシング効果を軽減し、最終的な特徴マップを生成
         P3 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (3, 3), padding="SAME", name="fpn_p3")(P3)
+        # P4に3x3畳み込みを適用してエイリアシング効果を軽減し、最終的な特徴マップを生成
         P4 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (3, 3), padding="SAME", name="fpn_p4")(P4)
+        # P5に3x3畳み込みを適用してエイリアシング効果を軽減し、最終的な特徴マップを生成
         P5 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (3, 3), padding="SAME", name="fpn_p5")(P5)
         # P6はRPNの5番目のアンカースケールに使用。stride 2で
         # P5からサブサンプリングして生成。
+        # P6を作成：P5を最大プーリング（ストライド2）でダウンサンプリングして、より大きな物体検出用
         P6 = KL.MaxPooling2D(pool_size=(1, 1), strides=2, name="fpn_p6")(P5)
 
         # P6はRPNで使用されるが、分類器ヘッドでは使用されないことに注意。
+        # RPN（Region Proposal Network）で使用する特徴マップのリスト（P2〜P6の5スケール）
         rpn_feature_maps = [P2, P3, P4, P5, P6]
+        # Mask R-CNN（分類とマスク生成）で使用する特徴マップのリスト（P2〜P5の4スケール、P6は低解像度なので除外）
         mrcnn_feature_maps = [P2, P3, P4, P5]
 
         # Anchors
@@ -1928,13 +1974,11 @@ class MaskRCNN():
         # RPNモデル
         rpn = build_rpn_model(config.RPN_ANCHOR_STRIDE,
                               len(config.RPN_ANCHOR_RATIOS), config.TOP_DOWN_PYRAMID_SIZE)
-        # ピラミッドレイヤーをループ
+        # 各特徴マップに対してRPNモデルを適用
         layer_outputs = []  # list of lists
         for p in rpn_feature_maps:
             layer_outputs.append(rpn([p]))
-        # レイヤー出力を連結
-        # レベル出力のリストのリストからレベルを横断する出力の
-        # リストのリストに変換。
+        # logits1, plobs1, bbox1, logits2, plob2,bbox2 → logits1,2, plobs1,2,
         # 例: [[a1, b1, c1], [a2, b2, c2]] => [[a1, a2], [b1, b2], [c1, c2]]
         output_names = ["rpn_class_logits", "rpn_class", "rpn_bbox"]
         outputs = list(zip(*layer_outputs))
@@ -1948,6 +1992,7 @@ class MaskRCNN():
         # ゼロパディングされている。
         proposal_count = config.POST_NMS_ROIS_TRAINING if mode == "training"\
             else config.POST_NMS_ROIS_INFERENCE
+        # ProposalLayerのcallメソッドが実行され、NMSを実行する
         rpn_rois = ProposalLayer(
             proposal_count=proposal_count,
             nms_threshold=config.RPN_NMS_THRESHOLD,
@@ -1960,9 +2005,9 @@ class MaskRCNN():
             active_class_ids = KL.Lambda(
                 lambda x: parse_image_meta_graph(x)["active_class_ids"],
                 output_shape=lambda s: (s[0], None))(input_image_meta)
-
+            # デバッグなどの用途
             if not config.USE_RPN_ROIS:
-                # 予測されたROIを無視し、入力として提供されたROIを使用。
+                # RPNとNMSで予測されたROIを無視し、入力として提供されたROIを使用。
                 input_rois = KL.Input(shape=[config.POST_NMS_ROIS_TRAINING, 4],
                                       name="input_roi", dtype=np.int32)
                 # 座標を正規化
