@@ -10,7 +10,7 @@ package-mode = false
 python = ">=3.9,<3.12"
 
 # Core dependencies
-numpy = ">=1.21,<1.24"        # TensorFlow 2.15互換性のためupper boundを明記
+numpy = ">=1.21.0,<2.0.0"        # pandas 1.5.3互換性のため
 tensorflow = ">=2.13.0,<2.16.0"  # Python 3.11対応、TF 2.x API使用
 keras = "^2.11.0"
 
@@ -21,7 +21,7 @@ h5py = "^3.6.0"
 
 # Image processing
 pillow = "^9.0.0"
-opencv-python = "^4.5.5"
+opencv-python = ">=4.5.0,<4.10.0"  # numpy 1.26.4互換性のため
 scikit-image = "^0.21.0"
 imgaug = "^0.4.0"
 
